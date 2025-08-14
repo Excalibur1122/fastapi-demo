@@ -48,7 +48,8 @@ def call_ark_api(question, image_url=None):
 #获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
 def call_ark(question: str,img_b64: str=None):
-    call_ark_api(question,img_b64)
+    answer=call_ark_api(question,img_b64)
+    return answer
 # 你的自定义方法（替换成你的实际逻辑）
 def add_numbers(a: int, b: int) -> int:
     return a + b
