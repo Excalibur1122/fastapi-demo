@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
 import requests
 import json
+import uuid
+from datetime import datetime, timedelta
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -57,6 +59,40 @@ def call_ark_api(question, image_url=None):
     except Exception as e:
         return f"调用失败：{str(e)}"
 
+#在cookie中添加graphic_id
+@app.get("/handle_graphic_cookie")
+def handle_graphic_cookie(request: Request, response: Response):
+    # 检查请求中是否已存在 graphic_id Cookie
+    existing_graphic_id = request.cookies.get("graphic_id")
+
+    if existing_graphic_id:
+        # 已存在，直接返回
+        return {
+            "status": "exists",
+            "graphic_id": existing_graphic_id,
+            "message": "graphic_id已存在"
+        }
+    else:
+        # 不存在，生成新的 graphic_id（使用UUID确保唯一性）
+        new_graphic_id = str(uuid.uuid4())
+
+        # 设置Cookie（有效期10年）
+        expire_date = datetime.now() + timedelta(days=3650)  # 约10年
+        response.set_cookie(
+            key="graphic_id",
+            value=new_graphic_id,
+            expires=expire_date.strftime("%a, %d-%b-%Y %H:%M:%S GMT"),  # HTTP标准时间格式
+            path="/",  # 全站有效
+            secure=False,  # 生产环境使用HTTPS时设为True
+            httponly=False,  # 允许前端读取（根据需求调整）
+            samesite="lax"
+        )
+
+        return {
+            "status": "created",
+            "graphic_id": new_graphic_id,
+            "message": "graphic_id已创建"
+        }
 # 获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
 def call_ark(question: str, img_b64: str=None):
