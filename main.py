@@ -1,10 +1,21 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
 import requests
 import json
+
 # 初始化 FastAPI 应用
 app = FastAPI()
 
-#根据用户提出的问题调用豆包ai返回相应的结果
+# 添加跨域配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源访问（生产环境建议指定具体域名）
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有 HTTP 方法
+    allow_headers=["*"],  # 允许所有请求头
+)
+
+# 根据用户提出的问题调用豆包ai返回相应的结果
 def call_ark_api(question, image_url=None):
     """
     调用火山方舟 API，发送问题（可附带图片）并返回结果
@@ -45,14 +56,17 @@ def call_ark_api(question, image_url=None):
 
     except Exception as e:
         return f"调用失败：{str(e)}"
-#获取回答的接口（GET请求、POST请求）
+
+# 获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
-def call_ark(question: str,img_b64: str=None):
-    answer=call_ark_api(question,img_b64)
+def call_ark(question: str, img_b64: str=None):
+    answer = call_ark_api(question, img_b64)
     return answer
+
 # 你的自定义方法（替换成你的实际逻辑）
 def add_numbers(a: int, b: int) -> int:
     return a + b
+
 # 将方法包装为 API 接口（GET 请求）
 @app.get("/add")
 def api_add(a: int, b: int):
