@@ -11,7 +11,8 @@ app = FastAPI()
 # 添加跨域配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500","https://www.htmlgo.cn","https://weixin.qq.com"],  # 允许所有来源访问（生产环境建议指定具体域名）
+    # allow_origins=["http://127.0.0.1:5500","https://www.htmlgo.cn","https://weixin.qq.com"],  # 允许所有来源访问（生产环境建议指定具体域名）
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],  # 允许所有 HTTP 方法
     allow_headers=["*"],  # 允许所有请求头
@@ -28,7 +29,7 @@ def call_ark_api(question, image_url=None):
     # API 接口地址
     url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 
-    # 请求头（包含身份验证和数据格式）
+    # 请求头（包含身份验证和数据格式）//
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer 1c99f808-f87f-4312-86d6-e8f4fbe1250e"  # 替换为实际 token
