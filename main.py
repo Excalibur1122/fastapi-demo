@@ -11,7 +11,7 @@ app = FastAPI()
 # 添加跨域配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],  # 允许所有来源访问（生产环境建议指定具体域名）
+    allow_origins=["http://127.0.0.1:5500","https://www.htmlgo.cn"],  # 允许所有来源访问（生产环境建议指定具体域名）
     allow_credentials=True,
     allow_methods=["*"],  # 允许所有 HTTP 方法
     allow_headers=["*"],  # 允许所有请求头
@@ -58,6 +58,9 @@ def call_ark_api(question, image_url=None):
 
     except Exception as e:
         return f"调用失败：{str(e)}"
+# def get_create_user_by_graphic_id(graphic_id):
+#     #检查该graphic_id是否在用户表中
+
 
 #在cookie中添加graphic_id
 @app.get("/handle_graphic_cookie")
@@ -98,23 +101,9 @@ def handle_graphic_cookie(request: Request, response: Response):
 def call_ark(question: str, img_b64: str=None):
     answer = call_ark_api(question, img_b64)
     return answer
+#根据传来的graphic_id去查询对应用户的数据（如果用户表没有这个用户的信息则创建，如果有则返回该用户的记录）
+# @app.api_route("/get_create_user_by_graphic_id", methods=["GET", "POST"])
+# def get_create_user_by(graphic_id: str):
+#     get_create_user_by_graphic_id(graphic_id)
 
-# 你的自定义方法（替换成你的实际逻辑）
-def add_numbers(a: int, b: int) -> int:
-    return a + b
 
-# 将方法包装为 API 接口（GET 请求）
-@app.get("/add")
-def api_add(a: int, b: int):
-    result = add_numbers(a, b)
-    return {"result": result}
-
-# 可选：再添加一个接口示例（POST 请求）
-from pydantic import BaseModel
-
-class Data(BaseModel):
-    text: str
-
-@app.post("/uppercase")
-def api_uppercase(data: Data):
-    return {"original": data.text, "uppercase": data.text.upper()}
