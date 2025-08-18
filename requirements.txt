@@ -3,3 +3,6 @@ uvicorn==0.23.2
 requests==2.31.0
 pydantic-settings>=2.0.0
 pyjwt>=2.8.0 #jwt
+pymysql==1.1.0
+python-dotenv==1.0.0
+sqlalchemy>=2.0.0
