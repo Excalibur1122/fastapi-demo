@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Depends,Request, Response
 from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
 import requests
 import json
@@ -6,6 +6,10 @@ import uuid
 import jwt
 from datetime import datetime, timedelta
 from config import settings  # 导入配置对象
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from database import SessionLocal, engine
+import models
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -19,7 +23,13 @@ app.add_middleware(
     allow_methods=["*"],  # 允许所有 HTTP 方法
     allow_headers=["*"],  # 允许所有请求头
 )
-
+# 数据库会话依赖：获取数据库连接
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 # 根据用户提出的问题调用豆包ai返回相应的结果
 def call_ark_api(question, image_url=None):
     """
@@ -102,6 +112,15 @@ def new_user():
         "long_token": long_token
     }
 
+#查找指定的用户id是否存在
+@app.api_route("/users/exists", methods=["GET", "POST"])
+def check_user_exists(user_id: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    return {
+        "user_id": user_id,
+        "exists": True if user else False,
+        "id": user.id if user else None  # 若存在，返回对应的自增 id
+    }
 
 #生成user_id，创建short_token和long_token返回
 @app.api_route("/new_user", methods=["GET", "POST"])
