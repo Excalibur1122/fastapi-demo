@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
 import requests
 import json
 import uuid
+import jwt
 from datetime import datetime, timedelta
+from config import settings  # 导入配置对象
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -59,52 +61,59 @@ def call_ark_api(question, image_url=None):
 
     except Exception as e:
         return f"调用失败：{str(e)}"
-# def get_create_user_by_graphic_id(graphic_id):
-#     #检查该graphic_id是否在用户表中
 
 
-#在cookie中添加graphic_id
-@app.get("/handle_graphic_cookie")
-def handle_graphic_cookie(request: Request, response: Response):
-    # 检查请求中是否已存在 graphic_id Cookie
-    existing_graphic_id = request.cookies.get("graphic_id")
+# 获取密钥和过期时间配置
+SECRET_KEY = settings.secret_key
+ACCESS_EXPIRE_HOURS = settings.access_expire_hours
+REFRESH_EXPIRE_DAYS = settings.refresh_expire_days
 
-    if existing_graphic_id:
-        # 已存在，直接返回
-        return {
-            "status": "exists",
-            "graphic_id": existing_graphic_id,
-            "message": "graphic_id已存在"
-        }
-    else:
-        # 不存在，生成新的 graphic_id（使用UUID确保唯一性）
-        new_graphic_id = str(uuid.uuid4())
 
-        # 设置Cookie（有效期10年）
-        expire_date = datetime.now() + timedelta(days=3650)  # 约10年
-        response.set_cookie(
-            key="graphic_id",
-            value=new_graphic_id,
-            expires=expire_date.strftime("%a, %d-%b-%Y %H:%M:%S GMT"),  # HTTP标准时间格式
-            path="/",  # 全站有效
-            secure=False,  # 生产环境使用HTTPS时设为True
-            httponly=False,  # 允许前端读取（根据需求调整）
-            samesite="lax"
-        )
+def new_user():
+    # 生成用户唯一ID
+    unique_id = str(uuid.uuid4())  # 转换为字符串以便存储和传输
 
-        return {
-            "status": "created",
-            "graphic_id": new_graphic_id,
-            "message": "graphic_id已创建"
-        }
+    # 计算短期Token(access token)过期时间
+    short_expiry = datetime.utcnow() + timedelta(hours=ACCESS_EXPIRE_HOURS)
+    # 构建短期Token payload
+    short_payload = {
+        "user_id": unique_id,
+        "exp": short_expiry,  # 过期时间
+        "type": "access"  # 标识Token类型
+    }
+    # 生成短期Token
+    short_token = jwt.encode(short_payload, SECRET_KEY, algorithm="HS256")
+
+    # 计算长期Token(refresh token)过期时间
+    long_expiry = datetime.utcnow() + timedelta(days=REFRESH_EXPIRE_DAYS)
+    # 构建长期Token payload
+    long_payload = {
+        "user_id": unique_id,
+        "exp": long_expiry,  # 过期时间
+        "type": "refresh"  # 标识Token类型
+    }
+    # 生成长期Token
+    long_token = jwt.encode(long_payload, SECRET_KEY, algorithm="HS256")
+
+    # 返回生成的用户ID和两个Token
+    return {
+        "unique_id": unique_id,
+        "short_token": short_token,
+        "long_token": long_token
+    }
+
+
+#生成user_id，创建short_token和long_token返回
+@app.api_route("/new_user", methods=["GET", "POST"])
+def newUser():
+    return new_user()
+
+
 # 获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
 def call_ark(question: str, img_b64: str=None):
     answer = call_ark_api(question, img_b64)
     return answer
-#根据传来的graphic_id去查询对应用户的数据（如果用户表没有这个用户的信息则创建，如果有则返回该用户的记录）
-# @app.api_route("/get_create_user_by_graphic_id", methods=["GET", "POST"])
-# def get_create_user_by(graphic_id: str):
-#     get_create_user_by_graphic_id(graphic_id)
+
 
 
