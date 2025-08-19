@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import SessionLocal, engine
 import models
-from token import init_user, refresh_access_token
+from jwt_token import init_user, refresh_access_token
 from dependencies import get_current_user
 
 # 初始化 FastAPI 应用

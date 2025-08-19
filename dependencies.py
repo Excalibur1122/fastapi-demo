@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import User
-from token import verify_token
+from jwt_token import verify_token
 
 # 从请求头提取Token（Authorization: Bearer <token>）
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token/refresh")
