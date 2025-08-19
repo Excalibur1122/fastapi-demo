@@ -6,3 +6,4 @@ pyjwt>=2.8.0 #jwt
 pymysql==1.1.0
 python-dotenv==1.0.0
 sqlalchemy>=2.0.0
+python-jose[cryptography]>=3.3.0
