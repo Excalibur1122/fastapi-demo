@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends,Request, Response
+from fastapi import FastAPI, Depends,HTTPException,Request, Response
 from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
 import requests
 import json
@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import SessionLocal, engine
 import models
+from token import init_user, refresh_access_token
+from dependencies import get_current_user
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -30,8 +32,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
 # 根据用户提出的问题调用豆包ai返回相应的结果
-def call_ark_api(question, image_url=None):
+def call_ark_api(question, user_id,image_url=None):
     """
     调用火山方舟 API，发送问题（可附带图片）并返回结果
     :param question: 控制台输入的问题（字符串）
@@ -79,10 +82,11 @@ ACCESS_EXPIRE_HOURS = settings.access_expire_hours
 REFRESH_EXPIRE_DAYS = settings.refresh_expire_days
 
 
-def new_user():
+def new_user(db: Session = Depends(get_db)):
     # 生成用户唯一ID
     unique_id = str(uuid.uuid4())  # 转换为字符串以便存储和传输
-
+    #将生成的用户唯一ID保存到数据库
+    new_user = models.User(user_id=unique_id)
     # 计算短期Token(access token)过期时间
     short_expiry = datetime.utcnow() + timedelta(hours=ACCESS_EXPIRE_HOURS)
     # 构建短期Token payload
@@ -104,15 +108,15 @@ def new_user():
     }
     # 生成长期Token
     long_token = jwt.encode(long_payload, SECRET_KEY, algorithm="HS256")
-
+    #将生成的长期token保存到数据库
+    new_SessionToken = models.SessionToken(long_token=long_token)
     # 返回生成的用户ID和两个Token
     return {
-        "unique_id": unique_id,
         "short_token": short_token,
         "long_token": long_token
     }
 
-#查找指定的用户id是否存在
+#查找指定的用户id是否存在（目前废弃）
 @app.api_route("/users/exists", methods=["GET", "POST"])
 def check_user_exists(user_id: str, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.user_id == user_id).first()
@@ -122,7 +126,7 @@ def check_user_exists(user_id: str, db: Session = Depends(get_db)):
         "id": user.id if user else None  # 若存在，返回对应的自增 id
     }
 
-#生成user_id，创建short_token和long_token返回
+#生成user_id，创建short_token和long_token返回（目前废弃）
 @app.api_route("/new_user", methods=["GET", "POST"])
 def newUser():
     return new_user()
@@ -130,9 +134,36 @@ def newUser():
 
 # 获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
-def call_ark(question: str, img_b64: str=None):
-    answer = call_ark_api(question, img_b64)
+def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user)):
+    answer = call_ark_api(question,user_id,img_b64)
     return answer
 
+# 初始化用户接口（首次访问）
+@app.post("/init")
+def init_new_user(db: Session = Depends(get_db)):
+    """创建新用户并返回Token（无需登录）"""
+    try:
+        user_id, access_token, long_token = init_user(db)
+        return {
+            "access_token": access_token,
+            "long_token": long_token,
+            "token_type": "bearer"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"初始化失败：{str(e)}")
 
+# 使用接收的长期Token刷新短期Token
+class RefreshRequest(BaseModel):
+    long_token: str
+@app.post("/token/refresh")
+def refresh_token(
+    req: RefreshRequest,
+    db: Session = Depends(get_db)
+):
+    """用长期Token获取新的access_token"""
+    try:
+        new_access_token = refresh_access_token(db, req.long_token)
+        return {"access_token": new_access_token, "token_type": "bearer"}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
