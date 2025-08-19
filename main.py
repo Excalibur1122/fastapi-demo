@@ -5,7 +5,7 @@ import json
 import uuid
 import jwt
 from datetime import datetime, timedelta
-from config import settings  # 导入配置对象
+# from config import settings  # 导入配置对象
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import SessionLocal, engine
@@ -74,63 +74,6 @@ def call_ark_api(question, user_id,image_url=None):
 
     except Exception as e:
         return f"调用失败：{str(e)}"
-
-
-# 获取密钥和过期时间配置
-SECRET_KEY = settings.secret_key
-ACCESS_EXPIRE_HOURS = settings.access_expire_hours
-REFRESH_EXPIRE_DAYS = settings.refresh_expire_days
-
-
-def new_user(db: Session = Depends(get_db)):
-    # 生成用户唯一ID
-    unique_id = str(uuid.uuid4())  # 转换为字符串以便存储和传输
-    #将生成的用户唯一ID保存到数据库
-    new_user = models.User(user_id=unique_id)
-    # 计算短期Token(access token)过期时间
-    short_expiry = datetime.utcnow() + timedelta(hours=ACCESS_EXPIRE_HOURS)
-    # 构建短期Token payload
-    short_payload = {
-        "user_id": unique_id,
-        "exp": short_expiry,  # 过期时间
-        "type": "access"  # 标识Token类型
-    }
-    # 生成短期Token
-    short_token = jwt.encode(short_payload, SECRET_KEY, algorithm="HS256")
-
-    # 计算长期Token(refresh token)过期时间
-    long_expiry = datetime.utcnow() + timedelta(days=REFRESH_EXPIRE_DAYS)
-    # 构建长期Token payload
-    long_payload = {
-        "user_id": unique_id,
-        "exp": long_expiry,  # 过期时间
-        "type": "refresh"  # 标识Token类型
-    }
-    # 生成长期Token
-    long_token = jwt.encode(long_payload, SECRET_KEY, algorithm="HS256")
-    #将生成的长期token保存到数据库
-    new_SessionToken = models.SessionToken(long_token=long_token)
-    # 返回生成的用户ID和两个Token
-    return {
-        "short_token": short_token,
-        "long_token": long_token
-    }
-
-#查找指定的用户id是否存在（目前废弃）
-@app.api_route("/users/exists", methods=["GET", "POST"])
-def check_user_exists(user_id: str, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.user_id == user_id).first()
-    return {
-        "user_id": user_id,
-        "exists": True if user else False,
-        "id": user.id if user else None  # 若存在，返回对应的自增 id
-    }
-
-#生成user_id，创建short_token和long_token返回（目前废弃）
-@app.api_route("/new_user", methods=["GET", "POST"])
-def newUser():
-    return new_user()
-
 
 # 获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
