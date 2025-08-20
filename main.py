@@ -84,7 +84,7 @@ def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current
 # 挂载静态文件目录（将 /templates 路径映射到 ./templates 文件夹）
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 #前端页面接口
-@app.post("/")
+@app.get("/")
 def index():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/templates/index.html")
