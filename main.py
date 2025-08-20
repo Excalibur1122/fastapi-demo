@@ -81,13 +81,23 @@ def call_ark_api(question, user_id,image_url=None):
 def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user)):
     answer = call_ark_api(question,user_id,img_b64)
     return answer
-# 挂载静态文件目录（将 /templates 路径映射到 ./templates 文件夹）
-app.mount("/templates", StaticFiles(directory="templates"), name="templates")
-#前端页面接口
+# # 挂载静态文件目录（将 /templates 路径映射到 ./templates 文件夹）
+# app.mount("/templates", StaticFiles(directory="templates"), name="templates")
+# #前端页面接口
+# @app.get("/")
+# def index():
+#     from fastapi.responses import RedirectResponse
+#     return RedirectResponse(url="/templates/index.html")
+
+# 将 templates 文件夹挂载到根路径（/），这样文件夹内的文件可通过根目录直接访问
+app.mount("/", StaticFiles(directory="templates"), name="templates")
+
+# 根路径直接返回认证文件（无需跳转前端页面，因为当前优先完成认证）
 @app.get("/")
 def index():
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/templates/index.html")
+    # 访问根路径时，直接跳转到认证文件
+    return RedirectResponse(url="/10f810fe2c20ef9d4e8ae13ab05b12b4.txt")
 
 # 初始化用户接口（首次访问）
 @app.post("/init")
