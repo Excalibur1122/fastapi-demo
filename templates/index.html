@@ -377,6 +377,50 @@
             imageName.textContent = '';
             imageUpload.value = ''; // 清空上传控件，允许重新选择
         }
+        /**
+         * 处理AI接口返回的文本，清除多余转义符并规范化格式
+         * @param {string} rawResponse - AI接口返回的原始文本
+         * @returns {string} 处理后的格式化文本
+         */
+        function formatAIResponse(rawResponse) {
+            if (!rawResponse) return "";
+
+            let processed = rawResponse;
+
+            // 1. 清除多余的转义符（核心步骤）
+            // 处理 \" 转义为 "（解决 ["GET", "POST"] 显示为 [\"GET\", \"POST\"] 的问题）
+            processed = processed.replace(/\\"/g, '"');
+            // 处理 \\ 转义为 \（避免双重转义）
+            processed = processed.replace(/\\\\/g, '\\');
+
+            // 2. 处理换行符（统一转换为HTML的<br>，或保留原生换行）
+            // 替换 \n、\r\n 为 <br>（适合在HTML中显示）
+            processed = processed.replace(/\\n|[\n\r]/g, '<br>');
+
+            // 3. 优化代码块显示（如果返回包含 ``` 代码块）
+            // 示例：将 ```python ... ``` 转换为带高亮样式的代码块（需配合CSS）
+            processed = processed.replace(
+                /```([\s\S]*?)```/g,  // 匹配 ``` 包裹的内容（非贪婪模式）
+                (match, code) => {
+                    // 提取语言标识（如 python、javascript）
+                    const [lang, ...codeLines] = code.split('\n');
+                    const codeContent = codeLines.join('<br>').trim();
+                    // 返回带样式的代码块（可自定义class）
+                    return `<div class="code-block"><div class="code-lang">${lang || 'code'}</div><div class="code-content">${codeContent}</div></div>`;
+                }
+            );
+
+            // 4. 处理加粗、斜体等Markdown格式（可选）
+            processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); // 粗体
+            processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>'); // 斜体
+            processed = processed.replace(/#{1,6}\s(.*?)(<br>|$)/g, (match, text, br) => {
+                // 标题（# 到 ###### 对应 h1 到 h6）
+                const level = match.indexOf('#');
+                return `<h${level + 1}>${text}</h${level + 1}>${br}`;
+            });
+
+            return processed;
+        }
 
         // 图片压缩函数（复用之前的实现）
         async function compressImage(base64Str, maxWidth, maxHeight, quality = 0.8) {
@@ -454,8 +498,7 @@
 
             try {
                 // 调用API
-                const answer = await callArkApi(question,sort_token_pu,img_base64);
-
+                const answer = formatAIResponse(await callArkApi(question,sort_token_pu,img_base64));
                 // 移除"正在输入"状态
                 typingIndicator.remove();
 
