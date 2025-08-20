@@ -13,6 +13,7 @@ from database import SessionLocal, engine
 import models
 from jwt_token import init_user, refresh_access_token
 from dependencies import get_current_user
+from models import User, SessionToken,ConsultationRecord
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -35,7 +36,16 @@ def get_db():
         db.close()
 
 # 根据用户提出的问题调用豆包ai返回相应的结果
-def call_ark_api(question, user_id,image_url=None):
+def call_ark_api(question, user_id,image_url=None,db=None):
+    #将问题保存到问答表中，角色是用户
+    if image_url:
+        db_con=ConsultationRecord(user_id=user_id, role=1, content_text=question,img_b64=image_url)
+        db.add(db_con)
+        db.commit()
+    else:
+        db_con = ConsultationRecord(user_id=user_id, role=1, content_text=question)
+        db.add(db_con)
+        db.commit()
     """
     调用火山方舟 API，发送问题（可附带图片）并返回结果
     :param question: 控制台输入的问题（字符串）
@@ -71,6 +81,10 @@ def call_ark_api(question, user_id,image_url=None):
         result = response.json()
         # 提取 AI 回答（从响应的 choices 中获取）
         answer = result["choices"][0]["message"]["content"]
+        # 将获取的回答保存到问答表中，角色是ai
+        db_con = ConsultationRecord(user_id=user_id, role=2, content_text=answer)
+        db.add(db_con)
+        db.commit()
         return answer
 
     except Exception as e:
@@ -78,8 +92,8 @@ def call_ark_api(question, user_id,image_url=None):
 
 # 获取回答的接口（GET请求、POST请求）
 @app.api_route("/call_ark_api", methods=["GET", "POST"])
-def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user)):
-    answer = call_ark_api(question,user_id,img_b64)
+def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user),db: Session = Depends(get_db)):
+    answer = call_ark_api(question,user_id,img_b64,db)
     return answer
 # 挂载静态文件目录（将 /templates 路径映射到 ./templates 文件夹）
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
@@ -92,7 +106,7 @@ def index():
 # 初始化用户接口（首次访问）
 @app.post("/init")
 def init_new_user(db: Session = Depends(get_db)):
-    """创建新用户并返回Token（无需登录）"""
+    """创建新用户并返回Token（无需登录），包括用户id和长期token的保存"""
     try:
         user_id, access_token, long_token = init_user(db)
         return {

@@ -11,17 +11,19 @@ class User(Base):
     update_time = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)  # 更新时间（自动更新）
 
 class ConsultationRecord(Base):
-    """咨询记录表模型（包含用户关联字段）"""
+    """咨询记录表模型（包含用户关联字段和图片Base64字段）"""
     __tablename__ = "consultation_records"  # 对应数据库表名
 
     # 自增主键
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, comment="自增主键")
-    # 关联的用户ID（新增字段）
+    # 关联的用户ID
     user_id = Column(String(255), nullable=False, comment="关联的用户ID（字符串类型）")
     # 角色（1：用户，2：AI）
     role = Column(Integer, nullable=False, comment="角色（1：用户，2：AI）")
-    # 发送的内容（长文本）
-    content_text = Column(Text, nullable=False, comment="发送的内容")
+    # 发送的文本内容（长文本）
+    content_text = Column(Text, nullable=False, comment="发送的文本内容")
+    # 图片的Base64编码（可为空，因为不是所有记录都有图片）
+    img_b64 = Column(Text, nullable=True, comment="图片的Base64编码字符串（可选）")
     # 创建时间（自动生成）
     created_at = Column(DateTime, default=func.now(), nullable=False, comment="创建时间")
     # 修改时间（自动更新）
