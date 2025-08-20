@@ -95,6 +95,12 @@
     </style>
 </head>
 <body class="font-inter bg-gray-50 text-neutral-800 min-h-screen flex flex-col">
+    <script>
+        //短期token
+        var sort_token_pu;
+        //长期token
+        var long_token_pu;
+    </script>
     <!-- 全屏阴影层 -->
     <div id="loadingLayer" class="fullscreen-loading">
         <!-- 加载动画（来自 loaders.css） -->
@@ -130,13 +136,13 @@
                 console.warn('long_token 为空，未保存');
             }
         }
-        // 发送 GET 请求
+        // 发送请求初始化接口方法
         async function getGraphicCookie() {
-            const apiUrl = "https://bean-bun-ai.zeabur.app/new_user";
+            const apiUrl = "https://bean-bun-ai.zeabur.app/init";
             try {
-                // 发送 GET 请求（默认方法为 GET，可省略不写）
+                // 发送 POST 请求，匹配后端 @app.post("/init")
                 const response = await fetch(apiUrl, {
-                    method: "GET"
+                    method: "POST"  // 仅修改这里，将GET改为POST
                 });
 
                 // 检查请求是否成功
@@ -144,21 +150,25 @@
                     throw new Error(`请求失败，状态码：${response.status}`);
                 }
 
-                // 解析返回的 JSON 数据
+                // 解析返回的 JSON 数据（后端返回access_token和long_token）
                 const result = await response.json();
                 console.log("接口返回结果：", result);
-                short_token=result.short_token;
-                long_token=result.long_token;
-                //将token保存到localStorage
-                saveTokensToStorage(short_token, long_token);
+                // 从返回结果中获取token
+                sort_token_pu = result.access_token;
+                long_token_pu = result.long_token;
+                // 将token保存到localStorage
+                saveTokensToStorage(sort_token_pu, long_token_pu);
+                //关闭全屏加载
+                hideLoading();
             } catch (error) {
+                //关闭全屏加载
+                hideLoading();
                 console.error("请求出错：", error);
                 // 处理错误（如提示用户）
                 throw error;
             }
         }
 
-        //检查localStorage中是否存在长期token和短期token
         function checkTokensInStorage() {
             // 从 localStorage 中获取 Token（不存在时返回 null）
             const shortToken = localStorage.getItem('short_token');
@@ -175,14 +185,17 @@
             };
         }
         const { hasShortToken, hasLongToken, bothExist } = checkTokensInStorage();
+        //1-检查localStorage中是否存在长期token和短期token
         if(bothExist){
             //两个token都存在，获取两个token的值
-            const shortToken = localStorage.getItem('short_token');
-            const longToken = localStorage.getItem('long_token');
+            sort_token_pu = localStorage.getItem('short_token');
+            long_token_pu = localStorage.getItem('long_token');
             //调用接口使用短期token验证获取数据
         }
         else{
-            //token不存在，调用接口进行创建保存
+            //开启全屏加载
+            showLoading()
+            //2-token不存在，调用初始化接口
             getGraphicCookie();
         }
     </script>
@@ -297,23 +310,110 @@
             console.log('上传了图片');
             const file = e.target.files[0];
             if (file) {
+                // 先检查原始文件大小（字节），1M = 1024 * 1024 = 1048576字节
+                const MAX_SIZE = 1024 * 1024; // 1M
+                if (file.size > MAX_SIZE) {
+                    alert('图片过大，请上传1M以下的图片');
+                    // 清空上传控件值，允许重新选择
+                    imageUpload.value = '';
+                    return;
+                }
+
                 // 显示文件名
                 imageName.textContent = file.name;
 
                 // 读取文件并转换为Base64
                 const reader = new FileReader();
-                reader.onload = function(event) {
-                    // 存储Base64编码
-                    uploadedImageBase64 = event.target.result;
-                    img_base64=event.target.result;
-                    console.log('赋值了');
-                    // 显示预览
-                    imagePreview.src = uploadedImageBase64;
+                reader.onload = async function(event) {
+                    // 原始图片Base64（用于预览）
+                    const originalBase64 = event.target.result;
+
+                    // 显示原图预览
+                    imagePreview.src = originalBase64;
                     imagePreviewContainer.classList.remove('hidden');
+
+                    try {
+                        // 压缩图片
+                        const compressedBase64 = await compressImage(originalBase64, 800, 800, 0.8);
+
+                        // 检查压缩后的大小（Base64字符串长度 ≈ 原始文件大小 * 1.37）
+                        const compressedSize = compressedBase64.length / 1.37;
+                        if (compressedSize > MAX_SIZE) {
+                            throw new Error('压缩后仍超过1M');
+                        }
+
+                        // 压缩后大小符合要求，存储用于接口调用
+                        uploadedImageBase64 = compressedBase64;
+                        img_base64 = compressedBase64;
+                        console.log('图片压缩完成，大小:', Math.round(compressedSize / 1024), 'KB');
+
+                    } catch (error) {
+                        console.error('图片处理失败:', error.message);
+
+                        // 检查原图Base64大小（用于压缩失败的情况）
+                        const originalSize = originalBase64.length / 1.37;
+                        if (originalSize > MAX_SIZE) {
+                            // 提示大小超限并重置状态
+                            alert('图片过大，压缩后仍超过1M，请更换 smaller 的图片');
+                            resetImageUpload();
+                        } else {
+                            // 压缩失败但原图大小符合要求，降级使用原图
+                            uploadedImageBase64 = originalBase64;
+                            img_base64 = originalBase64;
+                            console.log('使用原图，大小:', Math.round(originalSize / 1024), 'KB');
+                        }
+                    }
                 };
                 reader.readAsDataURL(file);
             }
         });
+
+        // 重置图片上传状态的辅助函数
+        function resetImageUpload() {
+            uploadedImageBase64 = null;
+            img_base64 = null;
+            imagePreview.src = '';
+            imagePreviewContainer.classList.add('hidden');
+            imageName.textContent = '';
+            imageUpload.value = ''; // 清空上传控件，允许重新选择
+        }
+
+        // 图片压缩函数（复用之前的实现）
+        async function compressImage(base64Str, maxWidth, maxHeight, quality = 0.8) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+
+                img.onload = function() {
+                    let width = img.width;
+                    let height = img.height;
+
+                    // 按比例缩小
+                    if (width > maxWidth) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    }
+                    if (height > maxHeight) {
+                        width = (width * maxHeight) / height;
+                        height = maxHeight;
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+
+                img.onerror = () => reject(new Error('图片加载失败'));
+                img.src = base64Str;
+            });
+        }
+
 
         // 移除图片
         removeImage.addEventListener('click', function() {
@@ -353,10 +453,8 @@
             const typingIndicator = addTypingIndicator();
 
             try {
-                console.log("传递给了方法");
-                console.log(img_base64);
                 // 调用API
-                const answer = await callArkApi(question, img_base64);
+                const answer = await callArkApi(question,sort_token_pu,img_base64);
 
                 // 移除"正在输入"状态
                 typingIndicator.remove();
@@ -441,53 +539,133 @@
 
             return indicatorDiv;
         }
-        //调用后端接口获取回答
-        async function callArkApi(question, imageBase64 = null) {
-            // 1. 构建基础URL并添加查询参数
-            const url = new URL("https://bean-bun-ai.zeabur.app/call_ark_api");
-
-            // 必须在查询参数中添加question（后端要求）
-            url.searchParams.append("question", question);
-
-            // 2. 构建请求体参数（仅img_b64，可选）
-            const bodyParams = {};
-            if (imageBase64) {
-                bodyParams.img_b64 = imageBase64;
+        // 调用后端接口获取回答（已添加token认证）
+        // 新增 retryCount 参数，记录重试次数（默认0，首次调用不计数）
+        async function callArkApi(question, access_token, imageBase64 = null, retryCount = 0) {
+            // 限制最大重试次数（比如最多重试2次，避免无限循环）
+            const MAX_RETRIES = 2;
+            if (retryCount > MAX_RETRIES) {
+                console.error(`已超过最大重试次数（${MAX_RETRIES}次），终止调用`);
+                alert("调用错误");
+                return "我无法解析这张图片呢";
             }
 
-            console.log("查询参数：", Object.fromEntries(url.searchParams));
-            console.log("请求体参数：", bodyParams);
+            // 1. 构建请求URL和参数
+            const url = new URL("https://bean-bun-ai.zeabur.app/call_ark_api");
+            url.searchParams.append("question", question);
+            if (imageBase64) {
+                url.searchParams.append("img_b64", imageBase64);
+            }
 
             try {
-                // 3. 发送POST请求
+                // 2. 发送请求
                 const response = await fetch(url.toString(), {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
+                        "Authorization": `Bearer ${access_token}`
                     },
-                    // 若有img_b64则传递请求体，否则传空对象
-                    body: JSON.stringify(bodyParams),
+                    body: JSON.stringify({}),
                 });
 
                 if (!response.ok) {
                     throw new Error(`HTTP错误！状态码：${response.status}`);
                 }
 
-                // 解析返回结果
+                // 3. 处理成功响应
                 const result = await response.text();
-                console.log(result);
-                let processedResult = result
-                .replace(/^"|"$/g, '')  // 去除首尾双引号
-                .replace(/\\n|[\n\r]/g, '<br>');  // 同时匹配 \n、\r、\r\n、\\n
-                console.log(processedResult);
-                return processedResult;
+                return result
+                    .replace(/^"|"$/g, '')
+                    .replace(/\\n|[\n\r]/g, '<br>');
 
             } catch (error) {
-                console.error("请求失败：", error);
-                throw error; // 抛出错误供调用者处理
+                console.error(`第${retryCount + 1}次调用失败：`, error);
+                const statusCode = error.message.match(/状态码：(\d+)/)?.[1];
+
+                // 仅处理401错误，且未超过最大重试次数
+                if (statusCode === "401" && retryCount < MAX_RETRIES) {
+                    console.log(`检测到token过期，准备第${retryCount + 1}次重试...`);
+
+                    const longToken = localStorage.getItem('long_token');
+                    try {
+                        // 尝试刷新token
+                        const newAccessToken = await refreshAccessToken(longToken);
+                        localStorage.setItem('access_token', newAccessToken);
+                        sort_token_pu = newAccessToken;
+
+                        // 重试时重试次数+1
+                        return await callArkApi(question, newAccessToken, imageBase64, retryCount + 1);
+
+                    } catch (refreshError) {
+                        console.error("token刷新失败，尝试重新初始化...");
+                        try {
+                            // 重新初始化
+                            await getGraphicCookie();
+                            const newAccessToken = localStorage.getItem('access_token');
+                            sort_token_pu = newAccessToken;
+
+                            // 重试时重试次数+1
+                            return await callArkApi(question, newAccessToken, imageBase64, retryCount + 1);
+
+                        } catch (initError) {
+                            console.error("重新初始化失败，终止重试");
+                            window.location.reload(true);
+                            return "我无法解析这张图片呢";
+                        }
+                    }
+
+                } else {
+                    // 非401错误，或超过最大重试次数：直接返回提示
+                    console.log("接口本身错误或重试次数耗尽，终止调用");
+                    window.location.reload(true);
+                    return "我无法解析这张图片呢";
+                }
             }
         }
+        /**
+         * 用长期token刷新短期access_token
+         * @param {string} longToken - 本地存储的长期token
+         * @returns {Promise<string>} 新的access_token
+         */
+        async function refreshAccessToken(longToken) {
+            if (!longToken) {
+                throw new Error("长期token不存在，无法刷新");
+            }
 
+            try {
+                // 调用后端刷新接口
+                const response = await fetch("https://bean-bun-ai.zeabur.app/token/refresh", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json", // 声明请求体为JSON格式
+                    },
+                    // 请求体：按后端RefreshRequest模型要求，传递long_token字段
+                    body: JSON.stringify({
+                        long_token: longToken // 字段名与后端BaseModel定义一致
+                    })
+                });
+
+                // 处理响应状态
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // 401通常表示长期token已过期或无效
+                        throw new Error("长期token无效或已过期，请重新初始化");
+                    }
+                    throw new Error(`刷新token失败，状态码：${response.status}`);
+                }
+
+                // 解析返回结果
+                const result = await response.json();
+                console.log("刷新token成功，新的access_token：", result.access_token);
+
+                // 返回新的access_token（后续可保存到localStorage）
+                return result.access_token;
+
+            } catch (error) {
+                console.error("刷新token过程出错：", error.message);
+                throw error; // 抛出错误，让调用者处理（如重新初始化）
+            }
+        }
         // 自动调整文本框高度
         questionInput.addEventListener('input', function() {
             this.style.height = 'auto';
