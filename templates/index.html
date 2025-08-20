@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI图文对话助手</title>
+    <!-- 引入Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入 Loading.io 的加载动画 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/loaders.css/0.1.2/loaders.min.css">
+    <!-- 配置Tailwind自定义颜色和字体 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4F46E5', // 主色调：靛蓝色
+                        secondary: '#10B981', // 辅助色：绿色
+                        neutral: {
+                            100: '#F3F4F6',
+                            200: '#E5E7EB',
+                            300: '#D1D5DB',
+                            700: '#374151',
+                            800: '#1F2937',
+                            900: '#111827'
+                        }
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <!-- 自定义工具类 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .message-appear {
+                animation: fadeIn 0.3s ease-out;
+            }
+            .typing-indicator {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+            }
+            .typing-indicator span {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background-color: #4F46E5;
+                animation: typing 1.4s infinite ease-in-out both;
+            }
+            .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+            .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes typing {
+            0% { transform: translateY(0px); }
+            28% { transform: translateY(-5px); }
+            44% { transform: translateY(0px); }
+        }
+        /* 全屏阴影层基础样式 */
+        .fullscreen-loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            display: none; /* 默认隐藏 */
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 text-neutral-800 min-h-screen flex flex-col">
+    <!-- 全屏阴影层 -->
+    <div id="loadingLayer" class="fullscreen-loading">
+        <!-- 加载动画（来自 loaders.css） -->
+        <div class="loader loader-circle"></div>
+        <p class="mt-4 text-lg">加载中...</p>
+    </div>
+    <script>
+        // 获取阴影层元素
+        const loadingLayer = document.getElementById('loadingLayer');
+
+        // 开启全屏加载
+        function showLoading() {
+            loadingLayer.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // 禁止滚动
+        }
+
+        // 关闭全屏加载
+        function hideLoading() {
+            loadingLayer.style.display = 'none';
+            document.body.style.overflow = 'auto'; // 恢复滚动
+        }
+        function saveTokensToStorage(shortToken, longToken) {
+            // 检查 Token 有效性（非空才保存，避免存储无效值）
+            if (shortToken && shortToken.trim() !== '') {
+                localStorage.setItem('short_token', shortToken); // 键名与读取时保持一致
+            } else {
+                console.warn('short_token 为空，未保存');
+            }
+
+            if (longToken && longToken.trim() !== '') {
+                localStorage.setItem('long_token', longToken);
+            } else {
+                console.warn('long_token 为空，未保存');
+            }
+        }
+        // 发送 GET 请求
+        async function getGraphicCookie() {
+            const apiUrl = "https://bean-bun-ai.zeabur.app/new_user";
+            try {
+                // 发送 GET 请求（默认方法为 GET，可省略不写）
+                const response = await fetch(apiUrl, {
+                    method: "GET"
+                });
+
+                // 检查请求是否成功
+                if (!response.ok) {
+                    throw new Error(`请求失败，状态码：${response.status}`);
+                }
+
+                // 解析返回的 JSON 数据
+                const result = await response.json();
+                console.log("接口返回结果：", result);
+                short_token=result.short_token;
+                long_token=result.long_token;
+                //将token保存到localStorage
+                saveTokensToStorage(short_token, long_token);
+            } catch (error) {
+                console.error("请求出错：", error);
+                // 处理错误（如提示用户）
+                throw error;
+            }
+        }
+
+        //检查localStorage中是否存在长期token和短期token
+        function checkTokensInStorage() {
+            // 从 localStorage 中获取 Token（不存在时返回 null）
+            const shortToken = localStorage.getItem('short_token');
+            const longToken = localStorage.getItem('long_token');
+
+            // 判断逻辑：存在且不为空字符串才视为有效
+            const hasShortToken = !!shortToken && shortToken.trim() !== '';
+            const hasLongToken = !!longToken && longToken.trim() !== '';
+
+            return {
+                hasShortToken: hasShortToken,
+                hasLongToken: hasLongToken,
+                bothExist: hasShortToken && hasLongToken // 两个都存在的状态
+            };
+        }
+        const { hasShortToken, hasLongToken, bothExist } = checkTokensInStorage();
+        if(bothExist){
+            //两个token都存在，获取两个token的值
+            const shortToken = localStorage.getItem('short_token');
+            const longToken = localStorage.getItem('long_token');
+            //调用接口使用短期token验证获取数据
+        }
+        else{
+            //token不存在，调用接口进行创建保存
+            getGraphicCookie();
+        }
+    </script>
+    <!-- 顶部导航 -->
+    <header class="bg-white shadow-sm border-b border-neutral-200 sticky top-0 z-10">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="fa fa-comments text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-neutral-800">AI图文对话助手</h1>
+            </div>
+            <div class="text-sm text-neutral-600">
+                <span class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+                    在线
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="flex-1 container mx-auto px-4 py-6 flex flex-col max-w-4xl">
+        <!-- 对话区域 -->
+        <div id="chat-container" class="flex-1 mb-6 overflow-y-auto scrollbar-hide space-y-6 pb-4">
+            <!-- 欢迎消息 -->
+            <div class="message-appear">
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0">
+                        <i class="fa fa-robot"></i>
+                    </div>
+                    <div class="bg-white rounded-lg rounded-tl-none px-4 py-3 shadow-sm max-w-[85%]">
+                        <p class="text-neutral-800">您好！我是AI助手，可以帮您分析图片内容。请输入您的问题，也可以上传图片并添加描述，我会尽快为您解答。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图片预览区域 -->
+        <div id="image-preview-container" class="mb-4 hidden">
+            <div class="bg-white rounded-lg shadow-sm p-4 relative">
+                <button id="remove-image" class="absolute top-2 right-2 text-neutral-500 hover:text-red-500 transition-colors">
+                    <i class="fa fa-times"></i>
+                </button>
+                <h3 class="text-sm font-medium text-neutral-700 mb-2">已上传图片：</h3>
+                <div class="flex items-center justify-center">
+                    <img id="image-preview" src="" alt="预览图" class="max-h-48 max-w-full object-contain rounded">
+                </div>
+            </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="bg-white rounded-xl shadow-md p-4">
+            <form id="chat-form" class="space-y-3">
+                <!-- 图片上传 -->
+                <div class="flex items-center gap-3">
+                    <label for="image-upload" class="text-primary hover:text-primary/80 transition-colors cursor-pointer flex items-center gap-1">
+                        <i class="fa fa-image"></i>
+                        <span class="text-sm">上传图片</span>
+                    </label>
+                    <input id="image-upload" type="file" accept="image/*" class="hidden" />
+                    <span id="image-name" class="text-sm text-neutral-500 truncate flex-1"></span>
+                </div>
+
+                <!-- 文本输入 -->
+                <div>
+                    <textarea
+                        id="question-input"
+                        placeholder="请输入您的问题..."
+                        class="w-full px-4 py-3 rounded-lg border border-neutral-300 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all resize-none"
+                        rows="3"
+                    ></textarea>
+                </div>
+
+                <!-- 发送按钮 -->
+                <div class="flex justify-end">
+                    <button
+                        id="fasong-paper-plane"
+                        type="submit"
+                        class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                        <span>发送</span>
+                        <i class="fa fa-paper-plane"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-neutral-200 py-4">
+        <div class="container mx-auto px-4 text-center text-sm text-neutral-500">
+            <p></p>
+        </div>
+    </footer>
+
+    <script>
+        // DOM元素
+        const chatForm = document.getElementById('chat-form');
+        const questionInput = document.getElementById('question-input');
+        const chatContainer = document.getElementById('chat-container');
+        const imageUpload = document.getElementById('image-upload');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const imageName = document.getElementById('image-name');
+        const removeImage = document.getElementById('remove-image');
+
+        // 存储上传的图片Base64编码
+        let uploadedImageBase64 = null;
+        var img_base64;
+
+        // 图片上传处理
+        imageUpload.addEventListener('change', function(e) {
+            console.log('上传了图片');
+            const file = e.target.files[0];
+            if (file) {
+                // 显示文件名
+                imageName.textContent = file.name;
+
+                // 读取文件并转换为Base64
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    // 存储Base64编码
+                    uploadedImageBase64 = event.target.result;
+                    img_base64=event.target.result;
+                    console.log('赋值了');
+                    // 显示预览
+                    imagePreview.src = uploadedImageBase64;
+                    imagePreviewContainer.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 移除图片
+        removeImage.addEventListener('click', function() {
+            uploadedImageBase64 = null;
+            imagePreview.src = '';
+            imagePreviewContainer.classList.add('hidden');
+            imageUpload.value = '';
+            imageName.textContent = '';
+        });
+
+        // 表单提交处理
+        chatForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const question = questionInput.value.trim();
+
+            // 验证输入
+            if (!question && !uploadedImageBase64) {
+                alert('请输入问题或上传图片');
+                return;
+            }
+
+            // 添加用户消息到对话
+            addMessageToChat(question, 'user', uploadedImageBase64);
+
+            // 清空输入和图片
+            questionInput.value = '';
+            if (uploadedImageBase64) {
+                uploadedImageBase64 = null;
+                imagePreview.src = '';
+                imagePreviewContainer.classList.add('hidden');
+                imageUpload.value = '';
+                imageName.textContent = '';
+            }
+
+            // 显示"正在输入"状态
+            const typingIndicator = addTypingIndicator();
+
+            try {
+                console.log("传递给了方法");
+                console.log(img_base64);
+                // 调用API
+                const answer = await callArkApi(question, img_base64);
+
+                // 移除"正在输入"状态
+                typingIndicator.remove();
+
+                // 添加AI回答到对话
+                addMessageToChat(answer, 'ai');
+            } catch (error) {
+                // 移除"正在输入"状态
+                typingIndicator.remove();
+
+                // 显示错误消息
+                addMessageToChat(`调用失败: ${error.message}`, 'ai', null, true);
+            }
+        });
+
+        // 添加消息到对话区域
+        function addMessageToChat(content, role, imageBase64 = null, isError = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message-appear';
+
+            let imageHtml = '';
+            if (imageBase64 && role === 'user') {
+                imageHtml = `
+                    <div class="mb-2">
+                        <img src="${imageBase64}" alt="用户上传的图片" class="max-h-40 max-w-full object-contain rounded">
+                    </div>
+                `;
+            }
+
+            const contentClass = isError ? 'text-red-600' : 'text-neutral-800';
+
+            if (role === 'user') {
+                messageDiv.innerHTML = `
+                    <div class="flex items-start gap-3 justify-end">
+                        <div class="bg-primary/10 rounded-lg rounded-tr-none px-4 py-3 shadow-sm max-w-[85%]">
+                            ${imageHtml}
+                            <p class="${contentClass}">${content}</p>
+                        </div>
+                        <div class="w-8 h-8 rounded-full bg-neutral-300 flex items-center justify-center text-neutral-700 flex-shrink-0">
+                            <i class="fa fa-user"></i>
+                        </div>
+                    </div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0">
+                            <i class="fa fa-robot"></i>
+                        </div>
+                        <div class="bg-white rounded-lg rounded-tl-none px-4 py-3 shadow-sm max-w-[85%]">
+                            <p class="${contentClass}">${content}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 添加"正在输入"指示器
+        function addTypingIndicator() {
+            const indicatorDiv = document.createElement('div');
+            indicatorDiv.className = 'message-appear';
+            indicatorDiv.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0">
+                        <i class="fa fa-robot"></i>
+                    </div>
+                    <div class="bg-white rounded-lg rounded-tl-none px-4 py-3 shadow-sm max-w-[85%]">
+                        <div class="typing-indicator">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            chatContainer.appendChild(indicatorDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            return indicatorDiv;
+        }
+        //调用后端接口获取回答
+        async function callArkApi(question, imageBase64 = null) {
+            // 1. 构建基础URL并添加查询参数
+            const url = new URL("https://bean-bun-ai.zeabur.app/call_ark_api");
+
+            // 必须在查询参数中添加question（后端要求）
+            url.searchParams.append("question", question);
+
+            // 2. 构建请求体参数（仅img_b64，可选）
+            const bodyParams = {};
+            if (imageBase64) {
+                bodyParams.img_b64 = imageBase64;
+            }
+
+            console.log("查询参数：", Object.fromEntries(url.searchParams));
+            console.log("请求体参数：", bodyParams);
+
+            try {
+                // 3. 发送POST请求
+                const response = await fetch(url.toString(), {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    // 若有img_b64则传递请求体，否则传空对象
+                    body: JSON.stringify(bodyParams),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP错误！状态码：${response.status}`);
+                }
+
+                // 解析返回结果
+                const result = await response.text();
+                console.log(result);
+                let processedResult = result
+                .replace(/^"|"$/g, '')  // 去除首尾双引号
+                .replace(/\\n|[\n\r]/g, '<br>');  // 同时匹配 \n、\r、\r\n、\\n
+                console.log(processedResult);
+                return processedResult;
+
+            } catch (error) {
+                console.error("请求失败：", error);
+                throw error; // 抛出错误供调用者处理
+            }
+        }
+
+        // 自动调整文本框高度
+        questionInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight > 120 ? 120 : this.scrollHeight) + 'px';
+        });
+    </script>
+</body>
+</html>

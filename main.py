@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends,HTTPException,Request, Response
 from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
+from fastapi.staticfiles import StaticFiles
 import requests
 import json
 import uuid
@@ -80,6 +81,13 @@ def call_ark_api(question, user_id,image_url=None):
 def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user)):
     answer = call_ark_api(question,user_id,img_b64)
     return answer
+# 挂载静态文件目录（将 /templates 路径映射到 ./templates 文件夹）
+app.mount("/templates", StaticFiles(directory="templates"), name="templates")
+#前端页面接口
+@app.post("/")
+def index():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/templates/index.html")
 
 # 初始化用户接口（首次访问）
 @app.post("/init")
