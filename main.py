@@ -37,6 +37,67 @@ def get_db():
         yield db
     finally:
         db.close()
+def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Session) -> Dict[str, Any]:
+    """
+    获取指定用户的对话记录，支持分页和按创建时间倒序排序
+
+    参数:
+        page: 页码（从1开始）
+        page_size: 每页记录数
+        user_id: 要查询的用户ID
+        db: 数据库会话
+
+    返回:
+        包含分页数据和元信息的字典
+    """
+    # 验证分页参数有效性
+    if page < 1:
+        raise ValueError("页码必须大于等于1")
+    if page_size < 1 or page_size > 100:  # 限制最大页大小，防止一次请求过多数据
+        raise ValueError("每页记录数必须在1到100之间")
+
+    # 计算偏移量
+    offset = (page - 1) * page_size
+
+    # 查询总记录数（用于计算总页数）
+    total_records = db.query(ConsultationRecord).filter(
+        ConsultationRecord.user_id == user_id
+    ).count()
+
+    # 分页查询指定用户的记录，按创建时间倒序排序（最新的在前）
+    records = db.query(ConsultationRecord).filter(
+        ConsultationRecord.user_id == user_id
+    ).order_by(
+        ConsultationRecord.created_at.desc()
+    ).offset(offset).limit(page_size).all()
+
+    # 计算总页数
+    total_pages = (total_records + page_size - 1) // page_size  # 向上取整
+
+    # 格式化返回数据
+    formatted_records = []
+    for record in records:
+        formatted_records.append({
+            "id": record.id,
+            "user_id": record.user_id,
+            "role": record.role,
+            "content_text": record.content_text,
+            "img_url": record.img_url,
+            "created_at": record.created_at.isoformat(),  # 转换为ISO格式字符串
+            "updated_at": record.updated_at.isoformat()
+        })
+
+    return {
+        "data": formatted_records,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_records": total_records,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+    }
 
 # 根据用户提出的问题调用豆包ai返回相应的结果
 def call_ark_api(question, user_id,image_url=None,db=None):
@@ -175,70 +236,7 @@ def refresh_token(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-
-def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Session) -> Dict[str, Any]:
-    """
-    获取指定用户的对话记录，支持分页和按创建时间倒序排序
-
-    参数:
-        page: 页码（从1开始）
-        page_size: 每页记录数
-        user_id: 要查询的用户ID
-        db: 数据库会话
-
-    返回:
-        包含分页数据和元信息的字典
-    """
-    # 验证分页参数有效性
-    if page < 1:
-        raise ValueError("页码必须大于等于1")
-    if page_size < 1 or page_size > 100:  # 限制最大页大小，防止一次请求过多数据
-        raise ValueError("每页记录数必须在1到100之间")
-
-    # 计算偏移量
-    offset = (page - 1) * page_size
-
-    # 查询总记录数（用于计算总页数）
-    total_records = db.query(ConsultationRecord).filter(
-        ConsultationRecord.user_id == user_id
-    ).count()
-
-    # 分页查询指定用户的记录，按创建时间倒序排序（最新的在前）
-    records = db.query(ConsultationRecord).filter(
-        ConsultationRecord.user_id == user_id
-    ).order_by(
-        ConsultationRecord.created_at.desc()
-    ).offset(offset).limit(page_size).all()
-
-    # 计算总页数
-    total_pages = (total_records + page_size - 1) // page_size  # 向上取整
-
-    # 格式化返回数据
-    formatted_records = []
-    for record in records:
-        formatted_records.append({
-            "id": record.id,
-            "user_id": record.user_id,
-            "role": record.role,
-            "content_text": record.content_text,
-            "img_url": record.img_url,
-            "created_at": record.created_at.isoformat(),  # 转换为ISO格式字符串
-            "updated_at": record.updated_at.isoformat()
-        })
-
-    return {
-        "data": formatted_records,
-        "pagination": {
-            "page": page,
-            "page_size": page_size,
-            "total_records": total_records,
-            "total_pages": total_pages,
-            "has_next": page < total_pages,
-            "has_prev": page > 1
-        }
-    }
-
-
+#获取指定用户对话记录的接口，采用了分页查询
 @app.api_route("/get_conversation_transcript", methods=["GET", "POST"])
 def get_conversation(
         page: int = 1,
