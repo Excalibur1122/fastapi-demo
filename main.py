@@ -14,6 +14,8 @@ import models
 from jwt_token import init_user, refresh_access_token
 from dependencies import get_current_user
 from models import User, SessionToken,ConsultationRecord
+import base64
+import os
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -37,15 +39,53 @@ def get_db():
 
 # 根据用户提出的问题调用豆包ai返回相应的结果
 def call_ark_api(question, user_id,image_url=None,db=None):
-    #将问题保存到问答表中，角色是用户
+    # 确保img文件夹存在
+    if not os.path.exists('img'):
+        os.makedirs('img')
+    # 图片路径
+    saved_img_url = None
     if image_url:
-        db_con=ConsultationRecord(user_id=user_id, role=1, content_text=question,img_b64=image_url)
-        db.add(db_con)
-        db.commit()
+        try:
+            # 生成随机不重复的图片名称（使用UUID+时间戳确保唯一性）
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            unique_id = uuid.uuid4().hex
+            img_filename = f"{timestamp}_{unique_id}.png"
+            img_path = os.path.join('img', img_filename)
+
+            # 解码base64并保存图片
+            # 注意：base64编码通常以'data:image/png;base64,'开头，需要先去除
+            if image_url.startswith('data:image'):
+                # 分割base64头部和实际编码内容
+                base64_data = image_url.split(',')[1]
+            else:
+                base64_data = image_url
+
+            # 解码并写入文件
+            with open(img_path, 'wb') as f:
+                f.write(base64.b64decode(base64_data))
+
+            # 构建存储到数据库的URL路径
+            saved_img_url = f"img/{img_filename}"
+
+        except Exception as e:
+            print(f"图片保存失败: {str(e)}")
+            # 可以根据需要决定是否抛出异常或继续执行
+    # 将记录保存到数据库
+    if saved_img_url:
+        db_con = ConsultationRecord(
+            user_id=user_id,
+            role=1,
+            content_text=question,
+            img_url=saved_img_url  # 这里使用修改后的字段名img_url
+        )
     else:
-        db_con = ConsultationRecord(user_id=user_id, role=1, content_text=question)
-        db.add(db_con)
-        db.commit()
+        db_con = ConsultationRecord(
+            user_id=user_id,
+            role=1,
+            content_text=question
+        )
+    db.add(db_con)
+    db.commit()
     """
     调用火山方舟 API，发送问题（可附带图片）并返回结果
     :param question: 控制台输入的问题（字符串）

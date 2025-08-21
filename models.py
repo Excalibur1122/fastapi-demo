@@ -23,7 +23,7 @@ class ConsultationRecord(Base):
     # 发送的文本内容（长文本）
     content_text = Column(Text, nullable=False, comment="发送的文本内容")
     # 图片的Base64编码（可为空，因为不是所有记录都有图片）
-    img_b64 = Column(Text, nullable=True, comment="图片的Base64编码字符串（可选）")
+    img_url = Column(Text, nullable=True, comment="图片的Base64编码字符串（可选）")
     # 创建时间（自动生成）
     created_at = Column(DateTime, default=func.now(), nullable=False, comment="创建时间")
     # 修改时间（自动更新）
