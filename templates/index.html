@@ -750,11 +750,11 @@
                         if (role === 1) {
                             // 用户消息（带可选图片）
                             imgUrl ?
-                                addMessageToChat(content, 'user', imgUrl) :
-                                addMessageToChat(content, 'user');
+                                addMessageToChat(formatAIResponse(content.replace(/^"|"$/g, '').replace(/\\n|[\n\r]/g, '<br>')), 'user', imgUrl) :
+                                addMessageToChat(formatAIResponse(content.replace(/^"|"$/g, '').replace(/\\n|[\n\r]/g, '<br>')), 'user');
                         } else if (role === 2) {
                             // AI消息
-                            addMessageToChat(content, 'ai');
+                            addMessageToChat(formatAIResponse(content.replace(/^"|"$/g, '').replace(/\\n|[\n\r]/g, '<br>')), 'ai');
                         }
                     });
 
