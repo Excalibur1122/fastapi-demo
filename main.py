@@ -19,6 +19,7 @@ import os
 from typing import List, Dict, Any
 import logging
 from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -284,9 +285,18 @@ def index():
 #微信验证
 @app.get("/")
 def index():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/templates/10f810fe2c20ef9d4e8ae13ab05b12b4.txt")
+    # 定义文件路径（相对于项目根目录，或使用绝对路径）
+    file_path = "templates/10f810fe2c20ef9d4e8ae13ab05b12b4.txt"
 
+    # 检查文件是否存在，避免404错误
+    if not os.path.exists(file_path):
+        return {"error": "文件不存在"}, 404
+
+    # 直接返回文件内容（自动处理MIME类型）
+    return FileResponse(
+        path=file_path,
+        filename="10f810fe2c20ef9d4e8ae13ab05b12b4.txt"  # 可选：指定下载时的文件名
+    )
 # 初始化用户接口（首次访问）
 @app.post("/init")
 def init_new_user(db: Session = Depends(get_db)):
