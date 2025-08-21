@@ -281,6 +281,11 @@ app.mount("/img", StaticFiles(directory="img"), name="img")
 def index():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/templates/index.html")
+#微信验证
+@app.get("/")
+def index():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/templates/10f810fe2c20ef9d4e8ae13ab05b12b4.txt")
 
 # 初始化用户接口（首次访问）
 @app.post("/init")
