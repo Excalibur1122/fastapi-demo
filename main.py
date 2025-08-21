@@ -139,11 +139,11 @@ def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Ses
         ConsultationRecord.user_id == user_id
     ).count()
 
-    # 分页查询指定用户的记录，按创建时间倒序排序（最新的在前）
+    # 分页查询指定用户的记录，按创建时间正序排序
     records = db.query(ConsultationRecord).filter(
         ConsultationRecord.user_id == user_id
     ).order_by(
-        ConsultationRecord.created_at.desc()
+        ConsultationRecord.created_at.asc()
     ).offset(offset).limit(page_size).all()
 
     # 计算总页数

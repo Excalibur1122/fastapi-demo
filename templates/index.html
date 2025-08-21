@@ -184,20 +184,6 @@
                 bothExist: hasShortToken && hasLongToken // 两个都存在的状态
             };
         }
-        const { hasShortToken, hasLongToken, bothExist } = checkTokensInStorage();
-        //1-检查localStorage中是否存在长期token和短期token
-        if(bothExist){
-            //两个token都存在，获取两个token的值
-            sort_token_pu = localStorage.getItem('short_token');
-            long_token_pu = localStorage.getItem('long_token');
-            //调用接口使用短期token验证获取数据
-        }
-        else{
-            //开启全屏加载
-            showLoading()
-            //2-token不存在，调用初始化接口
-            getGraphicCookie();
-        }
     </script>
     <!-- 顶部导航 -->
     <header class="bg-white shadow-sm border-b border-neutral-200 sticky top-0 z-10">
@@ -226,7 +212,7 @@
                         <i class="fa fa-robot"></i>
                     </div>
                     <div class="bg-white rounded-lg rounded-tl-none px-4 py-3 shadow-sm max-w-[85%]">
-                        <p class="text-neutral-800">您好！我是AI助手，可以帮您分析图片内容。请输入您的问题，也可以上传图片并添加描述，我会尽快为您解答。</p>
+                        <p class="text-neutral-800">您好！我是AI助手，可以帮您分析图片内容。请输入您的问题，也可以上传图片并添加描述，我会尽快为您解答。（左佳蕊你无敌了😀）</p>
                     </div>
                 </div>
             </div>
@@ -713,6 +699,201 @@
         questionInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = (this.scrollHeight > 120 ? 120 : this.scrollHeight) + 'px';
+        });
+        const { hasShortToken, hasLongToken, bothExist } = checkTokensInStorage();
+        //1-检查localStorage中是否存在长期token和短期token
+        if(bothExist){
+            //两个token都存在，获取两个token的值
+            sort_token_pu = localStorage.getItem('short_token');
+            long_token_pu = localStorage.getItem('long_token');
+            //调用接口使用短期token验证获取数据
+        }
+        else{
+            //开启全屏加载
+            showLoading()
+            //2-token不存在，调用初始化接口
+            getGraphicCookie();
+        }
+        //渲染用户对话记录
+        /**
+         * 分页获取并渲染所有对话记录（包含Token过期处理逻辑）
+         * @param {string} accessToken - 加密的access_token
+         */
+        async function loadAndRenderAllConversations(accessToken) {
+            let currentPage = 1; // 从第1页开始
+            const pageSize = 20; // 每页20条
+            let isLastPage = false;
+            const MAX_RETRIES = 2; // 最大重试次数，与callArkApi保持一致
+
+            // 开始获取数据时，开启全屏加载
+            showLoading();
+
+            try {
+                while (!isLastPage) {
+                    // 调用带重试逻辑的单页数据获取函数
+                    const result = await fetchConversationPage(
+                        currentPage,
+                        pageSize,
+                        accessToken,
+                        0, // 初始重试次数
+                        MAX_RETRIES
+                    );
+
+                    // 提取当前页数据和分页信息
+                    const { data: records, pagination } = result.data;
+                    const { has_next: hasNext } = pagination;
+
+                    // 遍历记录并按角色渲染
+                    records.forEach(record => {
+                        const { role, content_text: content, img_url: imgUrl } = record;
+
+                        if (role === 1) {
+                            // 用户消息（带可选图片）
+                            imgUrl ?
+                                addMessageToChat(content, 'user', imgUrl) :
+                                addMessageToChat(content, 'user');
+                        } else if (role === 2) {
+                            // AI消息
+                            addMessageToChat(content, 'ai');
+                        }
+                    });
+
+                    // 更新分页状态
+                    isLastPage = !hasNext;
+                    currentPage++;
+                    console.log(`已加载第${currentPage - 1}页，剩余数据：${!isLastPage ? '有' : '无'}`);
+                }
+
+                console.log('全部对话记录加载完成');
+            } catch (error) {
+                console.error('加载对话记录失败：', error);
+                alert('加载历史记录失败，请重试');
+            } finally {
+                // 无论成功或失败，最终都关闭全屏加载
+                hideLoading();
+            }
+        }
+
+        /**
+         * 获取单页对话记录（包含Token重试逻辑）
+         * @param {number} page - 页码
+         * @param {number} pageSize - 每页条数
+         * @param {string} accessToken - 访问令牌
+         * @param {number} retryCount - 当前重试次数
+         * @param {number} maxRetries - 最大重试次数
+         * @returns {Promise} 接口返回的JSON数据
+         */
+        async function fetchConversationPage(page, pageSize, accessToken, retryCount, maxRetries) {
+            // 超过最大重试次数则终止
+            if (retryCount > maxRetries) {
+                console.error(`已超过最大重试次数（${maxRetries}次），终止请求`);
+                throw new Error(`超过最大重试次数（${maxRetries}次）`);
+            }
+
+            // 构建请求URL
+            const url = new URL('https://bean-bun-ai.zeabur.app/get_conversation_transcript', window.location.origin);
+            url.searchParams.append('page', page);
+            url.searchParams.append('page_size', pageSize);
+
+            try {
+                // 发送带Token的GET请求
+                const response = await fetch(url.toString(), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}` // 通过请求头传递Token
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP错误！状态码：${response.status}`);
+                }
+
+                // 返回成功响应
+                return await response.json();
+
+            } catch (error) {
+                console.error(`第${retryCount + 1}次请求失败：`, error);
+                const statusCode = error.message.match(/状态码：(\d+)/)?.[1];
+
+                // 处理401 Token过期错误
+                if (statusCode === '401' && retryCount < maxRetries) {
+                    console.log(`Token过期，准备第${retryCount + 1}次重试...`);
+
+                    const longToken = localStorage.getItem('long_token');
+                    try {
+                        // 尝试刷新Token
+                        const newAccessToken = await refreshAccessToken(longToken);
+                        localStorage.setItem('access_token', newAccessToken);
+
+                        // 用新Token重试
+                        return await fetchConversationPage(
+                            page,
+                            pageSize,
+                            newAccessToken,
+                            retryCount + 1,
+                            maxRetries
+                        );
+
+                    } catch (refreshError) {
+                        console.error('Token刷新失败，尝试重新初始化...');
+                        try {
+                            // 重新初始化Token
+                            await getGraphicCookie();
+                            const newAccessToken = localStorage.getItem('access_token');
+
+                            // 用新初始化的Token重试
+                            return await fetchConversationPage(
+                                page,
+                                pageSize,
+                                newAccessToken,
+                                retryCount + 1,
+                                maxRetries
+                            );
+
+                        } catch (initError) {
+                            console.error('重新初始化Token失败，终止流程');
+                            window.location.reload(true); // 刷新页面重新获取Token
+                            throw new Error('Token验证失败，请重新登录');
+                        }
+                    }
+
+                } else {
+                    // 非401错误或重试次数耗尽
+                    console.log('非Token错误或重试次数耗尽，终止请求');
+                    throw error;
+                }
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 从本地存储获取short_token短期token
+            const accessToken = localStorage.getItem('short_token');
+            if (accessToken) {
+                // 已有Token，直接加载记录
+                loadAndRenderAllConversations(accessToken);
+            } else {
+                // 无Token，先初始化Token
+                console.log('未找到access_token，尝试初始化...');
+                // 初始化Token过程也需要加载状态
+                showLoading();
+                getGraphicCookie()
+                    .then(() => {
+                        const newAccessToken = localStorage.getItem('short_token');
+                        if (newAccessToken) {
+                            loadAndRenderAllConversations(newAccessToken);
+                        } else {
+                            alert('获取访问权限失败，请刷新页面');
+                            hideLoading(); // 初始化失败时关闭加载
+                        }
+                    })
+                    .catch(error => {
+                        console.error('初始化Token失败：', error);
+                        alert('获取访问权限失败，请刷新页面');
+                        hideLoading(); // 初始化失败时关闭加载
+                    });
+            }
         });
     </script>
 </body>
