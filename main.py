@@ -277,7 +277,7 @@ app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 # 将/img映射到img文件夹
 app.mount("/img", StaticFiles(directory="img"), name="img")
 #前端页面接口
-@app.get("/")
+@app.get("/connect_ai_chat")
 def index():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/templates/index.html")
