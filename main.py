@@ -16,6 +16,7 @@ from dependencies import get_current_user
 from models import User, SessionToken,ConsultationRecord
 import base64
 import os
+from typing import List, Dict, Any
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -173,4 +174,98 @@ def refresh_token(
         return {"access_token": new_access_token, "token_type": "bearer"}
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Session) -> Dict[str, Any]:
+    """
+    获取指定用户的对话记录，支持分页和按创建时间倒序排序
+
+    参数:
+        page: 页码（从1开始）
+        page_size: 每页记录数
+        user_id: 要查询的用户ID
+        db: 数据库会话
+
+    返回:
+        包含分页数据和元信息的字典
+    """
+    # 验证分页参数有效性
+    if page < 1:
+        raise ValueError("页码必须大于等于1")
+    if page_size < 1 or page_size > 100:  # 限制最大页大小，防止一次请求过多数据
+        raise ValueError("每页记录数必须在1到100之间")
+
+    # 计算偏移量
+    offset = (page - 1) * page_size
+
+    # 查询总记录数（用于计算总页数）
+    total_records = db.query(ConsultationRecord).filter(
+        ConsultationRecord.user_id == user_id
+    ).count()
+
+    # 分页查询指定用户的记录，按创建时间倒序排序（最新的在前）
+    records = db.query(ConsultationRecord).filter(
+        ConsultationRecord.user_id == user_id
+    ).order_by(
+        ConsultationRecord.created_at.desc()
+    ).offset(offset).limit(page_size).all()
+
+    # 计算总页数
+    total_pages = (total_records + page_size - 1) // page_size  # 向上取整
+
+    # 格式化返回数据
+    formatted_records = []
+    for record in records:
+        formatted_records.append({
+            "id": record.id,
+            "user_id": record.user_id,
+            "role": record.role,
+            "content_text": record.content_text,
+            "img_url": record.img_url,
+            "created_at": record.created_at.isoformat(),  # 转换为ISO格式字符串
+            "updated_at": record.updated_at.isoformat()
+        })
+
+    return {
+        "data": formatted_records,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_records": total_records,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+    }
+
+
+@app.api_route("/get_conversation_transcript", methods=["GET", "POST"])
+def get_conversation(
+        page: int = 1,
+        page_size: int = 20,  # 默认为20条每页
+        user_id: str = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    接口：获取当前用户的对话记录，支持分页
+
+    查询参数:
+        page: 页码，默认为1
+        page_size: 每页记录数，默认为20，最大100
+        user_id: 由依赖项get_current_user提供的当前用户ID
+    """
+    try:
+        # 调用数据查询方法
+        result = get_conversation_transcript(page, page_size, user_id, db)
+        return {
+            "code": 200,
+            "message": "查询成功",
+            "data": result
+        }
+    except ValueError as e:
+        # 处理参数错误
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # 处理其他异常
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
 
