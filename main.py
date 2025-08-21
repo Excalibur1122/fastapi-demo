@@ -315,20 +315,11 @@ def refresh_token(
 @app.api_route("/get_conversation_transcript", methods=["GET", "POST"])
 def get_conversation(
         page: int = 1,
-        page_size: int = 20,  # 默认为20条每页
+        page_size: int = 20,
         user_id: str = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """
-    接口：获取当前用户的对话记录，支持分页
-
-    查询参数:
-        page: 页码，默认为1
-        page_size: 每页记录数，默认为20，最大100
-        user_id: 由依赖项get_current_user提供的当前用户ID
-    """
     try:
-        # 调用数据查询方法
         result = get_conversation_transcript(page, page_size, user_id, db)
         return {
             "code": 200,
@@ -336,9 +327,14 @@ def get_conversation(
             "data": result
         }
     except ValueError as e:
-        # 处理参数错误
+        # 记录参数错误日志（可选，因通常是客户端问题）
+        logger.warning(f"参数错误: {str(e)}, user_id={user_id}, page={page}, page_size={page_size}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # 处理其他异常
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-
+        # 关键：记录未知异常的完整堆栈
+        logger.error(
+            f"查询对话记录失败: user_id={user_id}, page={page}, page_size={page_size}",
+            exc_info=True  # 强制记录完整堆栈
+        )
+        # 向客户端返回安全的错误信息（不暴露细节）
+        raise HTTPException(status_code=500, detail="查询失败，请稍后重试")
