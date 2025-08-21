@@ -17,6 +17,8 @@ from models import User, SessionToken,ConsultationRecord
 import base64
 import os
 from typing import List, Dict, Any
+import logging
+from fastapi.responses import JSONResponse
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -37,6 +39,79 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# --------------------------
+# 1. 配置详细错误日志
+# --------------------------
+# 创建日志器
+logger = logging.getLogger("app")
+logger.setLevel(logging.ERROR)  # 只记录错误及以上级别
+
+# 定义日志格式（包含时间、模块、错误级别、消息、完整堆栈）
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s\n"
+    "Traceback:\n%(exc_info)s\n"  # 关键：记录完整堆栈信息
+)
+
+# 日志输出到文件（生产环境推荐）
+file_handler = logging.FileHandler("app_errors.log")
+file_handler.setFormatter(formatter)
+
+# 同时输出到控制台（方便实时查看）
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+
+# 添加处理器到日志器
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# --------------------------
+# 2. 初始化 FastAPI 应用
+# --------------------------
+app = FastAPI()
+
+# 跨域配置（根据你的需求调整）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境应指定具体域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --------------------------
+# 3. 全局异常捕获中间件
+#    捕获所有未处理的异常并记录日志
+# --------------------------
+@app.middleware("http")
+async def catch_all_exceptions(request: Request, call_next):
+    try:
+        # 执行请求处理
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        # 记录错误详情：包含请求路径、方法、参数和完整堆栈
+        try:
+            # 获取请求参数（GET为查询参数，POST为表单/JSON数据）
+            if request.method == "GET":
+                params = dict(request.query_params)
+            else:
+                params = await request.json()  # 适用于JSON请求
+        except:
+            params = "无法解析请求参数"
+
+        # 记录错误日志
+        logger.error(
+            f"请求失败：方法={request.method}，路径={request.url.path}，参数={params}",
+            exc_info=True  # 强制记录完整堆栈（核心）
+        )
+
+        # 向客户端返回安全的错误信息（不暴露细节）
+        return JSONResponse(
+            status_code=500,
+            content={"code": 500, "message": "服务器内部错误，请稍后重试"}
+        )
+
 def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Session) -> Dict[str, Any]:
     """
     获取指定用户的对话记录，支持分页和按创建时间倒序排序
