@@ -278,25 +278,22 @@ app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 # 将/img映射到img文件夹
 app.mount("/img", StaticFiles(directory="img"), name="img")
 #前端页面接口
-@app.get("/connect_ai_chat")
+@app.get("/")
 def index():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/templates/index.html")
 #微信验证
-@app.get("/")
-def index():
-    # 定义文件路径（相对于项目根目录，或使用绝对路径）
-    file_path = "templates/10f810fe2c20ef9d4e8ae13ab05b12b4.txt"
+@app.get("/10f810fe2c20ef9d4e8ae13ab05b12b4.txt")
+def serve_verification_file():
+    # 文件路径：根目录下的认证文件
+    file_path = "templates/10f810fe2c20ef9d4e8ae13ab05b12b4.txt"  # 直接写文件名（因为在根目录）
 
-    # 检查文件是否存在，避免404错误
+    # 检查文件是否存在
     if not os.path.exists(file_path):
-        return {"error": "文件不存在"}, 404
+        return {"error": "认证文件不存在"}, 404
 
-    # 直接返回文件内容（自动处理MIME类型）
-    return FileResponse(
-        path=file_path,
-        filename="10f810fe2c20ef9d4e8ae13ab05b12b4.txt"  # 可选：指定下载时的文件名
-    )
+    # 返回文件内容（MIME类型自动设为text/plain，符合txt文件要求）
+    return FileResponse(path=file_path)
 # 初始化用户接口（首次访问）
 @app.post("/init")
 def init_new_user(db: Session = Depends(get_db)):
