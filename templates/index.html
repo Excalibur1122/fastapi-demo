@@ -204,7 +204,7 @@
     <!-- 主要内容区 -->
     <main class="flex-1 container mx-auto px-4 py-6 flex flex-col max-w-4xl">
         <!-- 对话区域 -->
-        <div id="chat-container" class="flex-1 mb-6 overflow-y-auto scrollbar-hide space-y-6 pb-4">
+        <div id="chat-container" class="flex-1 mb-6 overflow-y-auto scrollbar-hide space-y-6 pb-[220px]">
             <!-- 欢迎消息 -->
             <div class="message-appear">
                 <div class="flex items-start gap-3">
@@ -232,7 +232,7 @@
         </div>
 
         <!-- 输入区域 -->
-        <div class="bg-white rounded-xl shadow-md p-4">
+        <div class="bg-white rounded-xl shadow-md p-4 fixed bottom-0 left-0 right-0 z-50 max-w-4xl mx-auto px-4">
             <form id="chat-form" class="space-y-3">
                 <!-- 图片上传 -->
                 <div class="flex items-center gap-3">
@@ -468,7 +468,7 @@
 
             // 添加用户消息到对话
             addMessageToChat(question, 'user', uploadedImageBase64);
-
+            scrollToPageBottom();
             // 清空输入和图片
             questionInput.value = '';
             if (uploadedImageBase64) {
@@ -765,6 +765,7 @@
                 }
 
                 console.log('全部对话记录加载完成');
+                scrollToPageBottom();
             } catch (error) {
                 console.error('加载对话记录失败：', error);
                 alert('加载历史记录失败，请重试');
@@ -895,6 +896,15 @@
                     });
             }
         });
+        // 让整个页面（body/html）瞬间滚动到最底部
+        function scrollToPageBottom() {
+        // 同时操作 html 和 body 以兼容不同浏览器
+        document.body.scrollTop = document.body.scrollHeight;
+        document.documentElement.scrollTop = document.documentElement.scrollHeight;
+        }
+
+        // 使用示例：发送消息后调用
+
     </script>
 </body>
 </html>
