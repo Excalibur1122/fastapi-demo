@@ -157,7 +157,7 @@ def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Ses
             "user_id": record.user_id,
             "role": record.role,
             "content_text": record.content_text,
-            "img_url": "https://bean-bun-ai.zeabur.app/"+record.img_url,
+            "img_url": "https://bean-bun-ai.zeabur.app/" + record.img_url if record.img_url else None,
             "created_at": record.created_at.isoformat(),  # 转换为ISO格式字符串
             "updated_at": record.updated_at.isoformat()
         })
