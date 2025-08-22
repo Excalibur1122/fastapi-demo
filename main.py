@@ -200,6 +200,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         historical_records_text.append({})
         historical_records_text[i]["role"]=role[rec.role]
         historical_records_text[i]["content"] = rec.content_text
+        i+=1
     historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
     # 关键：将historical_str输出到日志
     logger.info(f"用户[{user_id}]的历史对话记录: \n{historical_str}")
