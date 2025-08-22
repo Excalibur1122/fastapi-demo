@@ -66,6 +66,13 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+# 2. 新增：仅添加信息日志处理器（不修改原有配置）
+# --------------------------
+# 新增信息日志文件（单独存储，不影响原有错误日志）
+info_file_handler = logging.FileHandler("app_info.log")
+info_file_handler.setFormatter(formatter)
+info_file_handler.setLevel(logging.INFO)  # 只处理 INFO 级别
+logger.addHandler(info_file_handler)  # 加入日志器，不影响原有处理器
 # --------------------------
 # 2. 初始化 FastAPI 应用
 # --------------------------
@@ -195,7 +202,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         historical_records_text[i]["content"] = rec.content_text
     historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
     # 关键：将historical_str输出到日志
-    logging.info(f"当前传递给大模型的历史对话记录：\n{historical_str}")
+    logger.info(f"用户[{user_id}]的历史对话记录: \n{historical_str}")
     prompt='''
 最近的历史对话列表如下，role字段代表角色，user是用户，assistant是大模型，content是他们发出和回复的内容：
 {historical_records_text}
