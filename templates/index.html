@@ -485,6 +485,8 @@
             try {
                 // 调用API
                 const answer = formatAIResponse(await callArkApi(question,sort_token_pu,img_base64));
+                //重置图片状态
+                img_base64=null;
                 // 移除"正在输入"状态
                 typingIndicator.remove();
 
