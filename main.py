@@ -194,8 +194,10 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         historical_records_text[i]["role"]=role[rec.role]
         historical_records_text[i]["content"] = rec.content_text
     historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
+    # 关键：将historical_str输出到日志
+    logging.info(f"当前传递给大模型的历史对话记录：\n{historical_str}")
     prompt='''
-最近的历史对话列表如下：
+最近的历史对话列表如下，role字段代表角色，user是用户，assistant是大模型，content是他们发出和回复的内容：
 {historical_records_text}
 本次用户提问的问题如下：
 {question}
