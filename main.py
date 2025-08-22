@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends,HTTPException,Request, Response
+from fastapi import UploadFile, File,Form,FastAPI, Depends,HTTPException,Request, Response
 from fastapi.middleware.cors import CORSMiddleware  # 导入跨域中间件
 from fastapi.staticfiles import StaticFiles
 import requests
@@ -6,7 +6,7 @@ import json
 import uuid
 import jwt
 from datetime import datetime, timedelta
-# from config import settings  # 导入配置对象
+from config import *
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import SessionLocal, engine
@@ -176,103 +176,116 @@ def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Ses
     }
 
 # 根据用户提出的问题调用豆包ai返回相应的结果
-def call_ark_api(question, user_id,image_url=None,db=None):
-    # 确保img文件夹存在
-    if not os.path.exists('img'):
-        os.makedirs('img')
-    # 图片路径
-    saved_img_url = None
-    if image_url:
-        try:
-            # 生成随机不重复的图片名称（使用UUID+时间戳确保唯一性）
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            unique_id = uuid.uuid4().hex
-            img_filename = f"{timestamp}_{unique_id}.png"
-            img_path = os.path.join('img', img_filename)
+import json
+import requests
 
-            # 解码base64并保存图片
-            # 注意：base64编码通常以'data:image/png;base64,'开头，需要先去除
-            if image_url.startswith('data:image'):
-                # 分割base64头部和实际编码内容
-                base64_data = image_url.split(',')[1]
-            else:
-                base64_data = image_url
 
-            # 解码并写入文件
-            with open(img_path, 'wb') as f:
-                f.write(base64.b64decode(base64_data))
+# 根据用户提出的问题调用豆包ai返回相应的结果
+def call_ark_api(question: str, user_id: str, image_path: str = None, db: Session = None) -> str:
+    """调用火山方舟API获取回答并保存记录"""
+    # 保存用户提问记录
+    if db:
+        record_data = {
+            "user_id": user_id,
+            "role": 1,  # 1表示用户
+            "content_text": question
+        }
+        if image_path:
+            record_data["img_url"] = image_path
 
-            # 构建存储到数据库的URL路径
-            saved_img_url = f"img/{img_filename}"
-
-        except Exception as e:
-            print(f"图片保存失败: {str(e)}")
-            # 可以根据需要决定是否抛出异常或继续执行
-    # 将记录保存到数据库
-    if saved_img_url:
-        db_con = ConsultationRecord(
-            user_id=user_id,
-            role=1,
-            content_text=question,
-            img_url=saved_img_url  # 这里使用修改后的字段名img_url
-        )
-    else:
-        db_con = ConsultationRecord(
-            user_id=user_id,
-            role=1,
-            content_text=question
-        )
-    db.add(db_con)
-    db.commit()
-    """
-    调用火山方舟 API，发送问题（可附带图片）并返回结果
-    :param question: 控制台输入的问题（字符串）
-    :param image_url: 图片 URL（可选，无需图片时传 None）
-    :return: API 响应结果中的回答文本
-    """
-    # API 接口地址
-    url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
-
-    # 请求头（包含身份验证和数据格式）//
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer 1c99f808-f87f-4312-86d6-e8f4fbe1250e"  # 替换为实际 token
-    }
-
-    # 构建消息内容（支持文字+图片混合输入）
-    content = [{"type": "text", "text": question}]
-    if image_url:
-        content.insert(0, {"type": "image_url", "image_url": {"url": image_url}})
-
-    # 请求体参数
-    payload = {
-        "model": "doubao-1-5-thinking-vision-pro-250428",  # 指定模型
-        "messages": [{"role": "user", "content": content}]  # 用户消息
-    }
-
-    try:
-        # 发送 POST 请求
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
-        response.raise_for_status()  # 检查请求是否成功（非 200 状态码会抛异常）
-
-        # 解析响应结果
-        result = response.json()
-        # 提取 AI 回答（从响应的 choices 中获取）
-        answer = result["choices"][0]["message"]["content"]
-        # 将获取的回答保存到问答表中，角色是ai
-        db_con = ConsultationRecord(user_id=user_id, role=2, content_text=answer)
-        db.add(db_con)
+        db.add(ConsultationRecord(**record_data))
         db.commit()
-        return answer
 
+    # 构建API请求内容
+    content = [{"type": "text", "text": question}]
+    if image_path:
+        full_image_url = f"{API_BASE_URL}/{image_path}"
+        content.insert(0, {
+            "type": "image_url",
+            "image_url": {"url": full_image_url}
+        })
+
+    # 发送请求到ARK API
+    try:
+        response = requests.post(
+            ARK_API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": ARK_API_KEY
+            },
+            data=json.dumps({
+                "model": "doubao-1-5-thinking-vision-pro-250428",
+                "messages": [{"role": "user", "content": content}]
+            })
+        )
+        response.raise_for_status()
+        result = response.json()
+        answer = result["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"调用失败：{str(e)}"
+        return f"API调用失败: {str(e)}"
+
+    # 保存AI回答记录
+    if db:
+        db.add(ConsultationRecord(
+            user_id=user_id,
+            role=2,  # 2表示AI
+            content_text=answer
+        ))
+        db.commit()
+
+    return answer
+
+
+# 工具函数：图片处理
+def process_image_file(file: UploadFile) -> str:
+    """处理上传的图片文件，返回相对路径"""
+    # 验证文件名和扩展名
+    if not file.filename or "." not in file.filename:
+        raise ValueError("无效的图片文件名")
+
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError(f"不支持的图片格式，允许格式: {ALLOWED_EXTENSIONS}")
+
+    # 生成唯一文件名
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    unique_id = uuid.uuid4().hex[:10]
+    new_filename = f"{timestamp}_{unique_id}.{ext}"
+
+    # 保存文件
+    file_path = os.path.join(UPLOAD_DIR, new_filename)
+    try:
+        with open(file_path, "wb") as buffer:
+            content = file.file.read()
+            buffer.write(content)
+    except Exception as e:
+        raise IOError(f"图片保存失败: {str(e)}")
+
+    # 返回相对路径
+    return f"{UPLOAD_DIR}/{new_filename}"
 
 # 获取回答的接口（GET请求、POST请求）
-@app.api_route("/call_ark_api", methods=["GET", "POST"])
-def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user),db: Session = Depends(get_db)):
-    answer = call_ark_api(question,user_id,img_b64,db)
+@app.post("/call_ark_api", response_model=dict)
+def handle_ark_request(
+        question: str = Form(..., description="用户的问题文本"),
+        file: UploadFile = File(None, description="可选的图片文件"),
+        user_id: str = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """处理用户的提问（可附带图片），返回AI回答"""
+    # 处理图片（如果有）
+    image_path = None
+    if file:
+        try:
+            image_path = process_image_file(file)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # 调用业务逻辑获取回答
+    answer = call_ark_api(question, user_id, image_path, db)
     return answer
+
+
 # 挂载静态文件目录（将 /templates 路径映射到 ./templates 文件夹）
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 # 将/img映射到img文件夹
