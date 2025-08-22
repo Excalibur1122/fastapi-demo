@@ -189,7 +189,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         ConsultationRecord.user_id == user_id
     ).order_by(
         ConsultationRecord.created_at.desc()  # 倒序排序（最新的在前）
-    ).limit(10).all()  # 只取最近的10条
+    ).limit(20).all()  # 只取最近的10条
     # 将查询结果按创建时间正序排列（最早的在前，恢复时间线顺序）
     records_sorted = sorted(records, key=lambda x: x.created_at)
     #找最近的10条聊天记录喂给大模型
@@ -202,8 +202,6 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         historical_records_text[i]["content"] = rec.content_text
         i+=1
     historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
-    # 关键：将historical_str输出到日志
-    logger.info(f"用户[{user_id}]的历史对话记录: \n{historical_str}")
     prompt='''
 最近的历史对话列表如下，role字段代表角色，user是用户，assistant是大模型，content是他们发出和回复的内容：
 {historical_records_text}
@@ -211,6 +209,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
 {question}
 按照以下要求生成回答：
 1.以本次的问题为重点，如果历史记录中有和本次提问的问题相关的内容则结合来生成回答
+2.尽量不要和用户说关于历史对话列表的事情，比如用户问我的上一个问题是什么，你可以直接回复，不用说明是查看了历史对话记录，更不用说出历史对话记录的结构
 '''
     # 替换占位符（使用转换后的字符串）
     prompt = prompt.replace('{historical_records_text}', historical_str)
