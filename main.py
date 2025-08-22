@@ -269,7 +269,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         return f"调用失败：{str(e)}"
 
 # 获取回答的接口（GET请求、POST请求）
-@app.api_route("/", methods=["GET", "POST"])
+@app.api_route("/call_ark_api", methods=["GET", "POST"])
 def call_ark(question: str, img_b64: str=None,user_id: str = Depends(get_current_user),db: Session = Depends(get_db)):
     answer = call_ark_api(question,user_id,img_b64,db)
     return answer
