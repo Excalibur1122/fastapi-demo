@@ -177,6 +177,34 @@ def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Ses
 
 # 根据用户提出的问题调用豆包ai返回相应的结果
 def call_ark_api(question, user_id,image_url=None,db=None):
+    # 按创建时间倒序查询最近10条记录（最新的在前）
+    records = db.query(ConsultationRecord).filter(
+        ConsultationRecord.user_id == user_id
+    ).order_by(
+        ConsultationRecord.created_at.desc()  # 倒序排序（最新的在前）
+    ).limit(10).all()  # 只取最近的10条
+    # 将查询结果按创建时间正序排列（最早的在前，恢复时间线顺序）
+    records_sorted = sorted(records, key=lambda x: x.created_at)
+    #找最近的10条聊天记录喂给大模型
+    historical_records_text=[]
+    role={1:"user",2:"assistant"}
+    i=0
+    for rec in records_sorted:
+        historical_records_text.append({})
+        historical_records_text[i]["role"]=role[rec.role]
+        historical_records_text[i]["content"] = rec.content_text
+    historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
+    prompt='''
+最近的历史对话列表如下：
+{historical_records_text}
+本次用户提问的问题如下：
+{question}
+按照以下要求生成回答：
+1.以本次的问题为重点，如果历史记录中有和本次提问的问题相关的内容则结合来生成回答
+'''
+    # 替换占位符（使用转换后的字符串）
+    prompt = prompt.replace('{historical_records_text}', historical_str)
+    prompt = prompt.replace('{question}', question)
     # 确保img文件夹存在
     if not os.path.exists('img'):
         os.makedirs('img')
@@ -240,7 +268,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
     }
 
     # 构建消息内容（支持文字+图片混合输入）
-    content = [{"type": "text", "text": question}]
+    content = [{"type": "text", "text": prompt}]
     if image_url:
         content.insert(0, {"type": "image_url", "image_url": {"url": image_url}})
 
