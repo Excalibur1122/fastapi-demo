@@ -632,7 +632,7 @@
                         try {
                             // 重新初始化
                             await getGraphicCookie();
-                            const newAccessToken = localStorage.getItem('access_token');
+                            const newAccessToken = localStorage.getItem('short_token');
                             sort_token_pu = newAccessToken;
 
                             // 重试时重试次数+1
@@ -826,7 +826,7 @@
                     try {
                         // 尝试刷新Token
                         const newAccessToken = await refreshAccessToken(longToken);
-                        localStorage.setItem('access_token', newAccessToken);
+                        localStorage.setItem('short_token', newAccessToken);
 
                         // 用新Token重试
                         return await fetchConversationPage(
@@ -842,7 +842,7 @@
                         try {
                             // 重新初始化Token
                             await getGraphicCookie();
-                            const newAccessToken = localStorage.getItem('access_token');
+                            const newAccessToken = localStorage.getItem('short_token');
 
                             // 用新初始化的Token重试
                             return await fetchConversationPage(
