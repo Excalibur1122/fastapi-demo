@@ -200,10 +200,12 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         historical_records_text.append({})
         historical_records_text[i]["role"]=role[rec.role]
         historical_records_text[i]["content"] = rec.content_text
+        if rec.img_url:
+            historical_records_text[i]["img_url"] = rec.img_url
         i+=1
     historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
     prompt='''
-最近的历史对话列表如下，role字段代表角色，user是用户，assistant是大模型，content是他们发出和回复的内容：
+最近的历史对话列表如下，role字段代表角色，user是用户，assistant是大模型，content是他们发出和回复的内容，img_url是用户发送的图片的链接（选填）：
 {historical_records_text}
 本次用户提问的问题如下：
 {question}
