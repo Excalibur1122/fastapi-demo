@@ -201,7 +201,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
         historical_records_text[i]["role"]=role[rec.role]
         historical_records_text[i]["content"] = rec.content_text
         if rec.img_url:
-            historical_records_text[i]["img_url"] = rec.img_url
+            historical_records_text[i]["img_url"] = "https://bean-bun-ai.zeabur.app/"+rec.img_url
         i+=1
     historical_str = json.dumps(historical_records_text, ensure_ascii=False, indent=2)
     prompt='''
@@ -213,6 +213,7 @@ def call_ark_api(question, user_id,image_url=None,db=None):
 1.以本次的问题为重点，如果历史记录中有和本次提问的问题相关的内容则结合来生成回答
 2.尽量不要和用户说关于历史对话列表的事情，比如用户问我的上一个问题是什么，你可以直接回复，不用说明是查看了历史对话记录，更不用说出历史对话记录的结构
 3.尽量详细的回答用户本次提出的问题
+4.img_url是图片的完整链接的字符串，你可以通过这个链接找到这张图片，当用户提及以前发送过的图片的时候你需要给出这张图片的描述而不是直接把图片链接给用户
 4.如果有人提起“左佳蕊”这个人，你就说这个人是练两个月车被晒黑的小黑妞（不用和这个完全一样，你可以进行修饰和根据聊天内容修改），但是要以用户的问题为主，也就是先赞同或者反驳用户观点在给出预设
 5.如果有人提起“王世发”这个人或者这个人的首字母缩写，回复他是一个高冷男神（可以进行修饰在回复），但是要以用户的问题为主，也就是先赞同或者反驳用户观点在给出预设
 '''
