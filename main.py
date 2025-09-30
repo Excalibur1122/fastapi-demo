@@ -20,6 +20,18 @@ from typing import List, Dict, Any
 import logging
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
+import sounddevice as sd
+import soundfile as sf
+import os
+import uuid
+import time
+from threading import Thread
+from queue import Queue
+from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+import numpy as np
 
 # 初始化 FastAPI 应用
 app = FastAPI()
@@ -180,6 +192,132 @@ def get_conversation_transcript(page: int, page_size: int, user_id: str, db: Ses
             "has_next": page < total_pages,
             "has_prev": page > 1
         }
+    }
+# --------------------------
+# 录音核心配置与全局变量
+# --------------------------
+# 录音文件保存根目录（确保存在，不存在则创建）
+RECORD_SAVE_ROOT = r"audio"
+os.makedirs(RECORD_SAVE_ROOT, exist_ok=True)
+
+# 全局录音会话池：key=会话ID，value=会话信息
+# 会话信息包含：状态、停止信号队列、保存路径、启动时间
+RECORDING_SESSIONS = {}
+
+# 录音参数（适配语音识别）
+SAMPLE_RATE = 16000  # 16kHz采样率
+CHANNELS = 1  # 单声道
+MAX_DURATION = 60  # 最大录制时长（秒）
+
+
+# --------------------------
+# 响应模型（规范返回格式）
+# --------------------------
+class StartRecordingResponse(BaseModel):
+    session_id: str  # 唯一录音会话ID
+    status: str  # 状态：recording（已启动录制）
+    message: str  # 提示信息
+    start_time: str  # 启动时间（ISO格式）
+    max_duration: int  # 最大录制时长（秒）
+
+# --------------------------
+# 后台录音线程函数（实际执行录制）
+# --------------------------
+def _recording_worker(session_id: str, stop_queue: Queue, save_path: str):
+    """
+    后台线程：执行实际录音逻辑，监听停止信号和最大时长
+    """
+    audio_data = []  # 缓存录音数据
+    start_time = datetime.now()  # 记录线程启动时间
+
+    # 录音回调函数：实时接收麦克风数据
+    def callback(indata, frames, time, status):
+        if status:
+            print(f"录音警告（会话 {session_id}）：{status}")
+        audio_data.append(indata.copy())  # 追加数据到缓存
+
+    # 启动录音流
+    stream = sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype='int16',  # 16bit位深
+        callback=callback
+    )
+
+    with stream:
+        print(f"会话 {session_id}：开始录音（后台线程启动）")
+        # 循环监听停止信号或超时
+        while True:
+            # 检查是否超时（超过最大时长自动停止）
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed >= MAX_DURATION:
+                print(f"会话 {session_id}：达到最大时长 {MAX_DURATION} 秒，自动停止")
+                break
+
+            # 检查是否收到停止信号（后续停止接口会发送信号）
+            if not stop_queue.empty():
+                stop_queue.get()  # 取出信号
+                print(f"会话 {session_id}：收到停止信号，停止录音")
+                break
+
+            time.sleep(0.1)  # 降低CPU占用
+
+    # 保存录音文件（仅当有数据时）
+    if audio_data:
+        # 合并音频数据
+        combined_data = audio_data[0]
+        for data in audio_data[1:]:
+            combined_data = np.concatenate((combined_data, data), axis=0)
+
+        # 保存为MP3
+        sf.write(
+            file=save_path,
+            data=combined_data,
+            samplerate=SAMPLE_RATE,
+            format='MP3'
+        )
+        print(f"会话 {session_id}：录音保存至 {save_path}")
+        # 更新会话状态为“已完成”（后续停止接口会读取此状态）
+        RECORDING_SESSIONS[session_id]["status"] = "completed"
+        RECORDING_SESSIONS[session_id]["save_path"] = save_path
+    else:
+        print(f"会话 {session_id}：未录制到有效音频")
+        RECORDING_SESSIONS[session_id]["status"] = "empty"
+
+
+#启动录音接口（POST /audio/recording）
+@app.post("/audio/recording", response_model=StartRecordingResponse)
+def start_recording():
+    # 1. 生成唯一会话ID（UUID+时间戳，确保不重复）
+    session_id = f"rec_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+    # 2. 生成录音文件保存路径（用会话ID命名）
+    save_filename = f"{session_id}.mp3"
+    save_path = os.path.join(RECORD_SAVE_ROOT, save_filename)
+
+    # 3. 初始化会话信息（存入全局会话池）
+    stop_queue = Queue()  # 用于接收停止信号的队列
+    RECORDING_SESSIONS[session_id] = {
+        "status": "recording",  # 初始状态：录制中
+        "stop_queue": stop_queue,
+        "save_path": None,  # 暂未保存
+        "start_time": datetime.now()  # 记录启动时间
+    }
+
+    # 4. 启动后台录音线程（异步执行，不阻塞接口返回）
+    Thread(
+        target=_recording_worker,
+        args=(session_id, stop_queue, save_path),
+        daemon=True  # 守护线程：主进程退出时自动结束
+    ).start()
+
+    # 5. 立即返回会话ID和状态（接口快速响应）
+    return {
+        "session_id": session_id,
+        "status": "recording",
+        "message": "录音已启动，最大时长60秒",
+        "start_time": datetime.now().isoformat(),
+        "max_duration": MAX_DURATION
     }
 
 # 根据用户提出的问题调用豆包ai返回相应的结果
