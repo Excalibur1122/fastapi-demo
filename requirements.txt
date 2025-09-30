@@ -21,4 +21,4 @@ sqlalchemy>=2.0.0
 # 录音功能依赖（新增）
 sounddevice==0.4.6  # 麦克风音频采集
 soundfile==0.12.1    # 音频文件读写（支持MP3/WAV）
-numpy==1.26.0        # 音频数据合并与处理（解决数组拼接）
+numpy>=1.26.2  # 自动适配 Python 3.13
